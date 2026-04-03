@@ -1,0 +1,16 @@
+name: water_quality_companion
+version: 1.0.0+1
+publish_to: none
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_blue_plus: ^1.35.5
+  fl_chart: ^0.68.0
+
+flutter:
+  uses-material-design: true

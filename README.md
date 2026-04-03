@@ -1,37 +1,47 @@
-# Water Quality Companion (APK 原型)
+# Pebble
 
-这是一个基于 Flutter 的安卓 APK 原型项目，用于配套 Arduino UNO 水质检测设备（蓝牙传输）.
+Pebble 是一个基于 Flutter 的移动端原型项目，当前 UI 已重置为 3 个核心页面：`Home`、`Map`、`Ask`。这 3 个页面按照最新 Figma 设计重建，并统一使用浅绿色背景、玻璃卡片、底部导航和本地图片资源。
 
-## 功能
-- 蓝牙连接 Arduino（基于 `flutter_blue_plus`，示例 UUID 可替换）
-- 接收 Arduino 上报数据（示例格式：`ph:7.05;tds:75;temp:25;cr6:0.15;score:66`）
-- 四个核心页面 UI：
-  1. 地图总览页（Map）
-  2. 水质详情页（Water quality）
-  3. 健康检测看板页（My Health Test）
-  4. 水知识页（Knowledge of Water）
+## 当前状态
 
-## 目录
-- `flutter_app/lib/main.dart`: 主要 UI 与蓝牙数据流示例
-- `flutter_app/pubspec.yaml`: 依赖配置
+- `Home`：健康测试总览页，包含平均测试数据、设备状态、Test Life、Water Quality 4 张卡片
+- `Map`：地图页，包含搜索栏、地图标记和地点信息卡片
+- `Ask`：知识问答页，包含常见问题列表和 AI Search 卡片
+- 本地资源已导入 `flutter_app/assets/`
+- 当前代码通过 `flutter analyze` 和 `flutter test`
 
-## 本地运行与打包 APK
-```bash
+## 项目结构
+
+- `flutter_app/`：Flutter 应用主体
+- `flutter_app/lib/main.dart`：应用入口
+- `flutter_app/lib/app/pebble_app.dart`：三页导航壳层
+- `flutter_app/lib/pages/`：`Home` / `Map` / `Ask` 页面
+- `flutter_app/lib/widgets/`：底部导航、玻璃卡片、环形进度等共享组件
+- `flutter_app/lib/theme/design_tokens.dart`：颜色、圆角、阴影等设计令牌
+- `flutter_app/assets/`：从 Figma 固化下来的图片资源
+- `flutter/`：本地 Flutter SDK
+
+## 本地运行
+
+```powershell
 cd flutter_app
-flutter pub get
-flutter run
+..\flutter\bin\flutter.bat pub get
+..\flutter\bin\flutter.bat run
 ```
 
-打包 APK：
-```bash
-flutter build apk --release
+## 验证
+
+```powershell
+cd flutter_app
+..\flutter\bin\flutter.bat analyze
+..\flutter\bin\flutter.bat test
 ```
 
-输出文件：
-`build/app/outputs/flutter-apk/app-release.apk`
+## 打包 APK
 
-## Arduino 通信建议
-1. Arduino 端按固定文本协议发送，建议每条数据以换行结束。
-2. 手机端应做粘包处理（按换行分帧）。
-3. 统一单位：PH、TDS(ppm)、温度(℃)、Cr6+(mg/L)、Score(0-100)。
-4. 可增加 CRC 或简单校验字段确保通信可靠性。
+```powershell
+cd flutter_app
+..\flutter\bin\flutter.bat build apk --release
+```
+
+输出文件默认位于 `flutter_app/build/app/outputs/flutter-apk/app-release.apk`。

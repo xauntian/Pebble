@@ -2,16 +2,18 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../theme/design_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_radius.dart';
+import '../theme/app_shadows.dart';
 
-class GlassCard extends StatelessWidget {
-  const GlassCard({
+class PebbleGlassCard extends StatelessWidget {
+  const PebbleGlassCard({
     super.key,
     required this.child,
     this.padding,
-    this.color = AppColors.whiteGlass,
+    this.color = AppColors.glass,
     this.borderRadius = const BorderRadius.all(
-      Radius.circular(AppRadii.card),
+      Radius.circular(AppRadius.card),
     ),
     this.blurSigma = 4,
     this.boxShadow = AppShadows.card,
@@ -44,7 +46,7 @@ class GlassCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: color,
               borderRadius: borderRadius,
-              border: border ?? Border.all(color: AppColors.whiteTint),
+              border: border ?? Border.all(color: AppColors.glassBorder),
             ),
             child: content,
           ),

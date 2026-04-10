@@ -1,8 +1,17 @@
+﻿import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/app_snapshot.dart';
-import '../theme/design_tokens.dart';
-import '../widgets/glass_card.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_radius.dart';
+import '../theme/app_shadows.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_text_styles.dart';
+import '../widgets/pebble_glass_card.dart';
+import '../widgets/pebble_top_bar.dart';
+import '../widgets/pill_chip.dart';
+import '../widgets/question_row_card.dart';
 
 class AskPage extends StatelessWidget {
   const AskPage({
@@ -26,78 +35,67 @@ class AskPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(30, 60, 30, 150),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final contentWidth = math.min(370.0, constraints.maxWidth);
+        final scale = contentWidth / 370.0;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.pageHorizontal,
+            AppSpacing.pageTop,
+            AppSpacing.pageHorizontal,
+            AppSpacing.pageBottom,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _MenuButton(),
-              Spacer(),
-              _UserBadge(),
+              const PebbleTopBar(),
+              const SizedBox(height: AppSpacing.section),
+              Text(
+                'Knowledge of Water',
+                style: Theme.of(context).textTheme.headlineLarge,
+              ),
+              const SizedBox(height: AppSpacing.section),
+              for (final question in _questions) ...[
+                SizedBox(
+                  width: contentWidth,
+                  height: 54 * scale,
+                  child: QuestionRowCard(question: question),
+                ),
+                SizedBox(height: 15 * scale),
+              ],
+              SizedBox(
+                width: contentWidth,
+                height: 209 * scale,
+                child: _AiSearchCard(
+                  suggestions: _suggestions,
+                  scale: scale,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 25),
-          Text(
-            'Knowledge of Water',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 25),
-          for (final question in _questions) ...[
-            _QuestionCard(question: question),
-            const SizedBox(height: 15),
-          ],
-          const _AiSearchCard(suggestions: _suggestions),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({required this.question});
-
-  final String question;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      padding: const EdgeInsets.all(15),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              question,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.blackText,
-              ),
-            ),
-          ),
-          const Icon(
-            Icons.chevron_right_rounded,
-            size: 24,
-            color: AppColors.blackText,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
 class _AiSearchCard extends StatelessWidget {
-  const _AiSearchCard({required this.suggestions});
+  const _AiSearchCard({
+    required this.suggestions,
+    required this.scale,
+  });
 
   final List<String> suggestions;
+  final double scale;
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      padding: const EdgeInsets.all(15),
+    return PebbleGlassCard(
+      padding: EdgeInsets.all(15 * scale),
       child: SizedBox(
-        height: 190,
+        height: 179 * scale,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -105,29 +103,37 @@ class _AiSearchCard extends StatelessWidget {
               'AI Search',
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: suggestions
-                  .map((suggestion) => _SuggestionChip(text: suggestion))
-                  .toList(),
+            SizedBox(height: 12 * scale),
+            Row(
+              children: [
+                _SuggestionChip(
+                  text: suggestions[0],
+                  width: 208 * scale,
+                  scale: scale,
+                ),
+                SizedBox(width: 6 * scale),
+                _SuggestionChip(
+                  text: suggestions[1],
+                  width: 100 * scale,
+                  scale: scale,
+                ),
+              ],
             ),
             const Spacer(),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Container(
-                  width: 31,
-                  height: 31,
+                  width: 31 * scale,
+                  height: 31 * scale,
                   decoration: BoxDecoration(
-                    color: AppColors.softGreen,
-                    borderRadius: BorderRadius.circular(15.5),
+                    color: AppColors.limeSoft,
+                    borderRadius: BorderRadius.circular(15.5 * scale),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(
+                  child: Icon(
                     Icons.keyboard_outlined,
-                    size: 18,
+                    size: 18 * scale,
                     color: AppColors.olive,
                   ),
                 ),
@@ -135,37 +141,37 @@ class _AiSearchCard extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         'Click or Press to ask',
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 10 * scale,
                           fontWeight: FontWeight.w500,
-                          color: AppColors.mutedText,
+                          color: AppColors.textMuted,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8 * scale),
                       Container(
-                        width: 48,
-                        height: 48,
+                        width: 48.33 * scale,
+                        height: 48.33 * scale,
                         decoration: const BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Color(0xFFAECA69), AppColors.olive],
+                            colors: [AppColors.oliveLight, AppColors.olive],
                           ),
                         ),
                         alignment: Alignment.center,
-                        child: const Icon(
+                        child: Icon(
                           Icons.graphic_eq_rounded,
-                          size: 26,
+                          size: 26 * scale,
                           color: Colors.white,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 31, height: 31),
+                SizedBox(width: 31 * scale, height: 31 * scale),
               ],
             ),
           ],
@@ -176,64 +182,31 @@ class _AiSearchCard extends StatelessWidget {
 }
 
 class _SuggestionChip extends StatelessWidget {
-  const _SuggestionChip({required this.text});
+  const _SuggestionChip({
+    required this.text,
+    required this.width,
+    required this.scale,
+  });
 
   final String text;
+  final double width;
+  final double scale;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(50),
-        boxShadow: AppShadows.dropdown,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Color(0x80000000),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MenuButton extends StatelessWidget {
-  const _MenuButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Icon(
-      Icons.menu_rounded,
-      size: 29,
-      color: AppColors.blackText,
-    );
-  }
-}
-
-class _UserBadge extends StatelessWidget {
-  const _UserBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 39,
-      height: 39,
-      decoration: BoxDecoration(
-        color: AppColors.lime,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      alignment: Alignment.center,
-      child: const Text(
-        'YT',
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-          color: AppColors.blackText,
+    return SizedBox(
+      width: width,
+      child: PillChip(
+        label: text,
+        height: 32 * scale,
+        padding: EdgeInsets.symmetric(horizontal: 10 * scale),
+        borderRadius: AppRadius.round * scale,
+        backgroundColor: AppColors.chipGlass,
+        boxShadow: AppShadows.field,
+        textStyle: TextStyle(
+          fontFamily: AppTextStyles.fontFamily,
+          fontSize: 12 * scale,
+          color: const Color(0x80000000),
         ),
       ),
     );

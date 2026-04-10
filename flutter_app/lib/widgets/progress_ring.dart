@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../theme/design_tokens.dart';
+import '../theme/app_colors.dart';
 
 class ProgressRing extends StatelessWidget {
   const ProgressRing({

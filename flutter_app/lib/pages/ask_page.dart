@@ -37,7 +37,11 @@ class AskPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final contentWidth = math.min(370.0, constraints.maxWidth);
+        final availableWidth = math.max(
+          0.0,
+          constraints.maxWidth - AppSpacing.pageHorizontal * 2,
+        );
+        final contentWidth = math.min(370.0, availableWidth);
         final scale = contentWidth / 370.0;
 
         return SingleChildScrollView(

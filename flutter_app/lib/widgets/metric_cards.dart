@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -25,7 +25,8 @@ class AverageTestsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Avg test Number', style: Theme.of(context).textTheme.titleLarge),
+            Text('Avg test Number',
+                style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppSpacing.lg),
             Align(
               alignment: Alignment.centerRight,
@@ -75,6 +76,10 @@ class DeviceStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final batteryLabel = snapshot.battery_number.trim().endsWith('%')
+        ? snapshot.battery_number.trim()
+        : '${snapshot.battery_number.trim()}%';
+
     return _MetricCardFrame(
       child: SizedBox(
         height: 203,
@@ -82,7 +87,14 @@ class DeviceStatusCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text("Your's", style: Theme.of(context).textTheme.titleLarge),
+                Expanded(
+                  child: Text(
+                    "Your's",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
                 const Spacer(),
                 const Icon(
                   Icons.battery_6_bar_outlined,
@@ -91,7 +103,7 @@ class DeviceStatusCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  '${snapshot.batteryLevel}%',
+                  batteryLabel,
                   style: const TextStyle(
                     fontSize: 8,
                     fontWeight: FontWeight.w700,
@@ -106,7 +118,7 @@ class DeviceStatusCard extends StatelessWidget {
                 width: 134,
                 height: 110,
                 child: Image.asset(
-                  'assets/home-device.png',
+                  'assets/figma/home-device.png',
                   fit: BoxFit.cover,
                   alignment: const Alignment(0.25, 0),
                 ),
@@ -169,7 +181,8 @@ class TestLifeCard extends StatelessWidget {
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
-                  child: Text('Test Life', style: Theme.of(context).textTheme.titleLarge),
+                  child: Text('Test Life',
+                      style: Theme.of(context).textTheme.titleLarge),
                 ),
               ],
             ),
@@ -252,9 +265,13 @@ class WaterQualityCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                DropdownPillChip(label: snapshot.locationName, width: 79),
+                Expanded(
+                  child: DropdownPillChip(label: snapshot.locationName),
+                ),
                 const SizedBox(width: AppSpacing.xs),
-                DropdownPillChip(label: snapshot.locationShort, width: 59),
+                Expanded(
+                  child: DropdownPillChip(label: snapshot.locationShort),
+                ),
               ],
             ),
             const SizedBox(height: 12),

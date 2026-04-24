@@ -28,11 +28,11 @@ class _AppShellState extends State<AppShell> {
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.padding.bottom;
 
-    final pages = <Widget>[
-      const HomePage(snapshot: _snapshot),
-      const MapPage(snapshot: _snapshot),
-      const AskPage(snapshot: _snapshot),
-    ];
+    final page = switch (_destination) {
+      AppDestination.home => const HomePage(snapshot: _snapshot),
+      AppDestination.map => const MapPage(snapshot: _snapshot),
+      AppDestination.ask => const AskPage(snapshot: _snapshot),
+    };
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -50,10 +50,7 @@ class _AppShellState extends State<AppShell> {
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: IndexedStack(
-                        index: _destination.index,
-                        children: pages,
-                      ),
+                      child: page,
                     ),
                     Positioned(
                       left: 0,
@@ -91,33 +88,16 @@ class _NavigationLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showMapFade = destination == AppDestination.map;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: showMapFade
-            ? const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x00DAEECB), Color(0xFFDAEECB)],
-              )
-            : const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.transparent],
-              ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.pageHorizontal,
+        AppSpacing.lg,
+        AppSpacing.pageHorizontal,
+        AppSpacing.navBottomOffset + bottomInset,
       ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.pageHorizontal,
-          AppSpacing.lg,
-          AppSpacing.pageHorizontal,
-          AppSpacing.navBottomOffset + bottomInset,
-        ),
-        child: AppNavBar(
-          currentDestination: destination,
-          onChanged: onChanged,
-        ),
+      child: AppNavBar(
+        currentDestination: destination,
+        onChanged: onChanged,
       ),
     );
   }

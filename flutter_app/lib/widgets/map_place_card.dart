@@ -38,9 +38,23 @@ class MapPlaceCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.asset(
-                    'assets/map-place.jpg',
-                    fit: BoxFit.cover,
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF6DA66A), Color(0xFF244D3F)],
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    right: 24,
+                    top: -20,
+                    child: Icon(
+                      Icons.park_rounded,
+                      size: 84,
+                      color: Color(0x33FFFFFF),
+                    ),
                   ),
                   const DecoratedBox(
                     decoration: BoxDecoration(
@@ -62,7 +76,7 @@ class MapPlaceCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                            fontSize: 24 * scale,
+                              fontSize: 24 * scale,
                               fontWeight: FontWeight.w700,
                               height: 1,
                               color: AppColors.white,

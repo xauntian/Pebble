@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_shadows.dart';
+import '../theme/app_text_styles.dart';
 import 'pebble_glass_card.dart';
 
 class MapSearchBar extends StatelessWidget {
@@ -29,9 +30,12 @@ class MapSearchBar extends StatelessWidget {
             child: Text(
               'Search place',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: AppColors.textHint,
-                  ),
+              style: const TextStyle(
+                fontFamily: AppTextStyles.fontFamily,
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: AppColors.textHint,
+              ),
             ),
           ),
           const SizedBox(width: 24),

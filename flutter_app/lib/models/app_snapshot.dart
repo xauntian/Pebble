@@ -1,8 +1,10 @@
+// ignore_for_file: non_constant_identifier_names
+
 class AppSnapshot {
   const AppSnapshot({
     required this.averageTestScore,
     required this.monthlyGoal,
-    required this.batteryLevel,
+    required this.battery_number,
     required this.testLife,
     required this.waterQualityScore,
     required this.chartValues,
@@ -14,7 +16,7 @@ class AppSnapshot {
   const AppSnapshot.demo()
       : averageTestScore = 75,
         monthlyGoal = 100,
-        batteryLevel = 85,
+        battery_number = '85',
         testLife = 89,
         waterQualityScore = 66,
         chartValues = const [41, 55, 44, 65, 62, 33, 41, 55, 49],
@@ -24,7 +26,7 @@ class AppSnapshot {
 
   final int averageTestScore;
   final int monthlyGoal;
-  final int batteryLevel;
+  final String battery_number;
   final int testLife;
   final int waterQualityScore;
   final List<double> chartValues;

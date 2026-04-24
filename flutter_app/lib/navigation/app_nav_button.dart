@@ -23,14 +23,14 @@ class AppNavButton extends StatelessWidget {
     final isActive = destination == currentDestination;
     final iconAsset = switch (destination) {
       AppDestination.home => isActive
-          ? 'assets/nav/home_active.svg'
-          : 'assets/nav/home_inactive.svg',
+          ? 'assets/figma/nav/home_active.svg'
+          : 'assets/figma/nav/home_inactive.svg',
       AppDestination.map => isActive
-          ? 'assets/nav/map_active.svg'
-          : 'assets/nav/map_inactive.svg',
+          ? 'assets/figma/nav/map_active.svg'
+          : 'assets/figma/nav/map_inactive.svg',
       AppDestination.ask => isActive
-          ? 'assets/nav/ask_active.svg'
-          : 'assets/nav/ask_inactive.svg',
+          ? 'assets/figma/nav/ask_active.svg'
+          : 'assets/figma/nav/ask_inactive.svg',
     };
     final iconColor =
         isActive ? AppColors.navIconActive : AppColors.navIconInactive;

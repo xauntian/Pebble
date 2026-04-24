@@ -28,7 +28,7 @@ class PebbleTopBar extends StatelessWidget {
           PillChip(
             label: dateLabel,
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-            backgroundColor: AppColors.glassTint,
+            backgroundColor: AppColors.glass,
             boxShadow: AppShadows.card,
             borderRadius: AppRadius.pill,
             leading: const Icon(
@@ -36,12 +36,7 @@ class PebbleTopBar extends StatelessWidget {
               size: 16,
               color: AppColors.textPrimary,
             ),
-            textStyle: const TextStyle(
-              fontFamily: AppTextStyles.fontFamily,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
-            ),
+            textStyle: AppTextStyles.date,
           ),
           const Spacer(),
         ] else

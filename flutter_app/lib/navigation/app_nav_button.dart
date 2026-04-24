@@ -12,11 +12,13 @@ class AppNavButton extends StatelessWidget {
     required this.destination,
     required this.currentDestination,
     required this.onTap,
+    this.width = 73,
   });
 
   final AppDestination destination;
   final AppDestination currentDestination;
   final VoidCallback onTap;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +61,7 @@ class AppNavButton extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            width: 73,
+            width: width,
             height: 52,
             decoration: BoxDecoration(
               color: isActive ? AppColors.olive : Colors.transparent,

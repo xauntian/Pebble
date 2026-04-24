@@ -10,7 +10,7 @@ class ProgressRing extends StatelessWidget {
     required this.value,
     required this.child,
     this.size = 92,
-    this.strokeWidth = 10,
+    this.strokeWidth = 9.2,
   });
 
   final double value;

@@ -12,20 +12,21 @@ class MapSearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PebbleGlassCard(
-      blurSigma: 12,
+      blurSigma: 4,
+      color: AppColors.glass,
       boxShadow: AppShadows.card,
       borderRadius: const BorderRadius.all(
         Radius.circular(AppRadius.search),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Icon(
             Icons.search_rounded,
             size: 24,
             color: AppColors.textPrimary,
           ),
-          const SizedBox(width: 12),
           Expanded(
             child: Text(
               'Search place',
@@ -38,7 +39,6 @@ class MapSearchBar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 24),
         ],
       ),
     );

@@ -29,3 +29,11 @@ These screens are implemented from the latest Figma handoff and use shared glass
 - `lib/widgets/`: shared UI building blocks
 - `lib/theme/`: colors, shadows, radii, and theme setup
 - `assets/`: local Figma-derived images
+
+## Version Log
+
+### 1.0.1+2
+
+- Updated Home page layout to a two-column masonry card arrangement with consistent spacing.
+- Aligned Home page card typography, glass fills, progress rings, and icon assets with the Figma design.
+- Added the Figma battery SVG asset and centered the Your Device main image.

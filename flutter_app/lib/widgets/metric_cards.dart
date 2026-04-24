@@ -1,10 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/app_snapshot.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_text_styles.dart';
 import 'pill_chip.dart';
 import 'pebble_glass_card.dart';
 import 'progress_ring.dart';
@@ -28,37 +30,40 @@ class AverageTestsCard extends StatelessWidget {
             Text('Avg test Number',
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppSpacing.lg),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text.rich(
-                TextSpan(
-                  text: 'in 1 month ',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w400,
-                    color: AppColors.textPrimary,
+            Expanded(
+              child: Center(
+                child: SizedBox(
+                  width: 149,
+                  child: Column(
+                    children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text.rich(
+                          TextSpan(
+                            text: 'in 1 month ',
+                            style: AppTextStyles.metricPrefix,
+                            children: [
+                              TextSpan(
+                                text: '${snapshot.averageTestScore}',
+                                style: AppTextStyles.metricValue,
+                              ),
+                              TextSpan(
+                                text: '/ ${snapshot.monthlyGoal}',
+                                style: AppTextStyles.metricSuffix,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      Expanded(
+                        child: _MiniBarChart(values: snapshot.chartValues),
+                      ),
+                    ],
                   ),
-                  children: [
-                    TextSpan(
-                      text: '${snapshot.averageTestScore}',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    TextSpan(
-                      text: '/ ${snapshot.monthlyGoal}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 28),
-            Expanded(child: _MiniBarChart(values: snapshot.chartValues)),
           ],
         ),
       ),
@@ -96,19 +101,15 @@ class DeviceStatusCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                const Icon(
-                  Icons.battery_6_bar_outlined,
-                  size: 20,
-                  color: AppColors.textPrimary,
+                SvgPicture.asset(
+                  'assets/figma/battery.svg',
+                  width: 21,
+                  height: 21,
                 ),
                 const SizedBox(width: 5),
                 Text(
                   batteryLabel,
-                  style: const TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.batteryLabel,
                 ),
               ],
             ),
@@ -120,22 +121,22 @@ class DeviceStatusCard extends StatelessWidget {
                 child: Image.asset(
                   'assets/figma/home-device.png',
                   fit: BoxFit.cover,
-                  alignment: const Alignment(0.25, 0),
+                  alignment: Alignment.center,
                 ),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+              children: const [
                 _ConnectionDot(),
-                SizedBox(width: AppSpacing.lg),
-                Text(
-                  'Test Kit',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                SizedBox(width: AppSpacing.sm),
+                Flexible(
+                  child: Text(
+                    'Test Kit',
+                    style: AppTextStyles.deviceLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -143,11 +144,7 @@ class DeviceStatusCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.md),
             const Text(
               'Connected',
-              style: TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textSecondary,
-              ),
+              style: AppTextStyles.statusLabel,
             ),
           ],
         ),
@@ -166,9 +163,12 @@ class TestLifeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const testLifePercent = 89;
+    final testLifeProgress = testLifePercent / 100.0;
+
     return _MetricCardFrame(
-      child: SizedBox(
-        height: 159,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 159),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -188,39 +188,36 @@ class TestLifeCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ProgressRing(
-                    value: snapshot.testLife / 100,
-                    size: 80,
-                    child: Text.rich(
-                      TextSpan(
-                        text: '${snapshot.testLife}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                        children: const [
+              child: Center(
+                child: SizedBox(
+                  width: 149,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ProgressRing(
+                        value: testLifeProgress,
+                        size: 92,
+                        child: Text.rich(
                           TextSpan(
-                            text: '%',
-                            style: TextStyle(fontSize: 12),
+                            text: '$testLifePercent',
+                            style: AppTextStyles.metricValue,
+                            children: const [
+                              TextSpan(
+                                text: '%',
+                                style: AppTextStyles.metricPercentSuffix,
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Utilization',
+                        style: AppTextStyles.sectionLabel,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Utilization',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ],
@@ -240,9 +237,13 @@ class WaterQualityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final waterQualityPercent =
+        snapshot.waterQualityScore.clamp(0, 100).toInt();
+    final waterQualityProgress = waterQualityPercent / 100.0;
+
     return _MetricCardFrame(
-      child: SizedBox(
-        height: 163,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 163),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -263,34 +264,35 @@ class WaterQualityCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownPillChip(label: snapshot.locationName),
+            Center(
+              child: SizedBox(
+                width: 149,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DropdownPillChip(label: snapshot.locationName),
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Expanded(
+                      child: DropdownPillChip(label: snapshot.locationShort),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: DropdownPillChip(label: snapshot.locationShort),
-                ),
-              ],
+              ),
             ),
             const SizedBox(height: 12),
             Center(
               child: ProgressRing(
-                value: snapshot.waterQualityScore / 100,
-                size: 80,
+                value: waterQualityProgress,
+                size: 92,
                 child: Text.rich(
                   TextSpan(
-                    text: '${snapshot.waterQualityScore}',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
+                    text: '$waterQualityPercent',
+                    style: AppTextStyles.metricValue,
                     children: const [
                       TextSpan(
                         text: '/ 100',
-                        style: TextStyle(fontSize: 10),
+                        style: AppTextStyles.metricSuffix,
                       ),
                     ],
                   ),
@@ -341,11 +343,11 @@ class _MiniBarChart extends StatelessWidget {
                   Column(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: const [
-                      Text('100', style: TextStyle(fontSize: 8)),
+                      Text('100', style: AppTextStyles.chartLabel),
                       SizedBox(height: 11),
-                      Text('50', style: TextStyle(fontSize: 8)),
+                      Text('50', style: AppTextStyles.chartLabel),
                       SizedBox(height: 11),
-                      Text('0', style: TextStyle(fontSize: 8)),
+                      Text('0', style: AppTextStyles.chartLabel),
                       SizedBox(height: 12),
                     ],
                   ),
@@ -378,11 +380,7 @@ class _MiniBarChart extends StatelessWidget {
                                       ),
                                       child: const Text(
                                         '99',
-                                        style: TextStyle(
-                                          fontSize: 5,
-                                          fontWeight: FontWeight.w900,
-                                          color: Colors.white,
-                                        ),
+                                        style: AppTextStyles.dataPoint,
                                       ),
                                     ),
                                   Container(
@@ -407,8 +405,8 @@ class _MiniBarChart extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               SizedBox(width: 12),
-                              Text('Mar', style: TextStyle(fontSize: 8)),
-                              Text('Jun', style: TextStyle(fontSize: 8)),
+                              Text('Mar', style: AppTextStyles.chartLabel),
+                              Text('Jun', style: AppTextStyles.chartLabel),
                               SizedBox(width: 12),
                             ],
                           ),

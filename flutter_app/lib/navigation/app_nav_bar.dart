@@ -20,11 +20,19 @@ class AppNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const buttonWidth = 73.0;
         const buttonCount = 3;
+        const preferredButtonWidth = 73.0;
+        const minButtonWidth = 56.0;
+        const minGap = 4.0;
         final horizontalPadding =
-            ((constraints.maxWidth - buttonWidth * buttonCount) / 2)
-                .clamp(12.0, 55.0);
+            (constraints.maxWidth * 0.14).clamp(AppSpacing.sm, AppSpacing.xxl);
+        final contentWidth = constraints.maxWidth - horizontalPadding * 2;
+        final buttonWidth =
+            ((contentWidth - minGap * (buttonCount - 1)) / buttonCount)
+                .clamp(minButtonWidth, preferredButtonWidth);
+        final gap =
+            ((contentWidth - buttonWidth * buttonCount) / (buttonCount - 1))
+                .clamp(0.0, double.infinity);
 
         return PebbleGlassCard(
           borderRadius: const BorderRadius.all(Radius.circular(AppRadius.nav)),
@@ -33,22 +41,27 @@ class AppNavBar extends StatelessWidget {
             vertical: AppSpacing.navVerticalPadding,
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               AppNavButton(
                 destination: AppDestination.home,
                 currentDestination: currentDestination,
                 onTap: () => onChanged(AppDestination.home),
+                width: buttonWidth,
               ),
+              SizedBox(width: gap),
               AppNavButton(
                 destination: AppDestination.map,
                 currentDestination: currentDestination,
                 onTap: () => onChanged(AppDestination.map),
+                width: buttonWidth,
               ),
+              SizedBox(width: gap),
               AppNavButton(
                 destination: AppDestination.ask,
                 currentDestination: currentDestination,
                 onTap: () => onChanged(AppDestination.ask),
+                width: buttonWidth,
               ),
             ],
           ),

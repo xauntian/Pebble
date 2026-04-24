@@ -151,6 +151,9 @@ class _MapPageState extends State<MapPage> {
               initialZoom: _defaultZoom,
               minZoom: 11,
               maxZoom: 18,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+              ),
               backgroundColor: const Color(0xFFF5F6F2),
               onTap: (_, __) => _hidePointDetails(),
               onPositionChanged: (_, hasGesture) {
@@ -204,13 +207,41 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
         ),
+        const Positioned(
+          left: -1,
+          right: -1,
+          bottom: 0,
+          height: 139,
+          child: _BottomNavGradient(),
+        ),
         Positioned(
           left: AppSpacing.pageHorizontal,
           right: AppSpacing.pageHorizontal,
-          top: AppSpacing.xl,
+          top: 60,
           child: const MapSearchBar(),
         ),
       ],
+    );
+  }
+}
+
+class _BottomNavGradient extends StatelessWidget {
+  const _BottomNavGradient();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0x00DAEECB),
+            AppColors.limeSoft,
+          ],
+          stops: [0.08633, 0.91396],
+        ),
+      ),
     );
   }
 }

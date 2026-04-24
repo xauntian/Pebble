@@ -25,9 +25,10 @@ class HomePage extends StatelessWidget {
           0.0,
           constraints.maxWidth - AppSpacing.pageHorizontal * 2,
         );
-        final cardContainerWidth = math.min(367.0, availableWidth);
-        final cardWidth = (cardContainerWidth - 9) / 2;
-        final useSingleColumn = cardContainerWidth < 340;
+        final cardContainerWidth = availableWidth;
+        const cardGap = 9.0;
+        final cardWidth = math.max(0.0, (cardContainerWidth - cardGap) / 2);
+        final compactHeightExtra = math.max(0.0, 180 - cardWidth) * 0.7;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
@@ -46,76 +47,44 @@ class HomePage extends StatelessWidget {
               Align(
                 child: SizedBox(
                   width: cardContainerWidth,
-                  child: useSingleColumn
-                      ? Column(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: cardWidth,
+                        child: Column(
                           children: [
                             SizedBox(
-                              width: cardContainerWidth,
                               height: 204,
                               child: AverageTestsCard(snapshot: snapshot),
                             ),
-                            const SizedBox(height: AppSpacing.sm),
+                            const SizedBox(height: cardGap),
                             SizedBox(
-                              width: cardContainerWidth,
-                              height: 233,
-                              child: DeviceStatusCard(snapshot: snapshot),
-                            ),
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: cardWidth,
-                              height: 204,
-                              child: AverageTestsCard(snapshot: snapshot),
-                            ),
-                            const SizedBox(width: 9),
-                            SizedBox(
-                              width: cardWidth,
-                              height: 233,
-                              child: DeviceStatusCard(snapshot: snapshot),
+                              height: 196 + compactHeightExtra,
+                              child: TestLifeCard(snapshot: snapshot),
                             ),
                           ],
                         ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Align(
-                child: SizedBox(
-                  width: cardContainerWidth,
-                  child: useSingleColumn
-                      ? Column(
+                      ),
+                      const SizedBox(width: cardGap),
+                      SizedBox(
+                        width: cardWidth,
+                        child: Column(
                           children: [
                             SizedBox(
-                              width: cardContainerWidth,
-                              height: 189,
-                              child: TestLifeCard(snapshot: snapshot),
+                              height: 233,
+                              child: DeviceStatusCard(snapshot: snapshot),
                             ),
-                            const SizedBox(height: AppSpacing.sm),
+                            const SizedBox(height: cardGap),
                             SizedBox(
-                              width: cardContainerWidth,
-                              height: 193,
-                              child: WaterQualityCard(snapshot: snapshot),
-                            ),
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: cardWidth,
-                              height: 189,
-                              child: TestLifeCard(snapshot: snapshot),
-                            ),
-                            const SizedBox(width: 9),
-                            SizedBox(
-                              width: cardWidth,
-                              height: 193,
+                              height: 196 + compactHeightExtra,
                               child: WaterQualityCard(snapshot: snapshot),
                             ),
                           ],
                         ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

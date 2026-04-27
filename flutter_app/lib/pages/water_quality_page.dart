@@ -550,6 +550,7 @@ class _WaterQualityDatePickerState extends State<_WaterQualityDatePicker>
     'FRI',
     'SAT'
   ];
+  static const _compactWeekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
@@ -618,8 +619,9 @@ class _WaterQualityDatePickerState extends State<_WaterQualityDatePicker>
       builder: (context) {
         final panelWidth = math.min(_panelMaxWidth, widget.contentWidth);
         final horizontalOffset = -(panelWidth - _pillWidth) - _panelShadowInset;
-        final regionReports = widget.reports
-            .where((report) => report.regionCode == widget.selectedRegionCode)
+        final selectedLocationReports = widget.reports
+            .where((report) =>
+                report.locationId == widget.selectedReport.locationId)
             .toList(growable: false);
 
         return Stack(
@@ -657,7 +659,7 @@ class _WaterQualityDatePickerState extends State<_WaterQualityDatePicker>
                                 visibleMonth: _visibleMonth,
                                 selectedDate: widget.selectedReport.testedAt,
                                 selectedRegionCode: widget.selectedRegionCode,
-                                reports: regionReports,
+                                reports: selectedLocationReports,
                                 onPreviousMonth: _showPreviousMonth,
                                 onNextMonth: _showNextMonth,
                                 onReportSelected: _selectReport,
@@ -813,7 +815,7 @@ class _CalendarPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reportsByDate = _reportsByDate();
+    final selectedLocationReportsByDate = _selectedLocationReportsByDate();
     final rows = _calendarRows();
 
     return PebbleGlassCard(
@@ -843,36 +845,20 @@ class _CalendarPanel extends StatelessWidget {
               ),
               const Spacer(),
               _CalendarArrowButton(
+                key: const ValueKey('water-calendar-prev-month'),
                 icon: Icons.chevron_left_rounded,
                 onTap: onPreviousMonth,
               ),
               const SizedBox(width: 18),
               _CalendarArrowButton(
+                key: const ValueKey('water-calendar-next-month'),
                 icon: Icons.chevron_right_rounded,
                 onTap: onNextMonth,
               ),
             ],
           ),
           const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              for (final label in _WaterQualityDatePickerState._weekdayLabels)
-                SizedBox(
-                  width: 32,
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontFamily: AppTextStyles.fontFamily,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          const _CalendarWeekdayRow(),
           const SizedBox(height: 3),
           for (final row in rows) ...[
             Row(
@@ -883,7 +869,7 @@ class _CalendarPanel extends StatelessWidget {
                     date: day,
                     report: day == null
                         ? null
-                        : reportsByDate[
+                        : selectedLocationReportsByDate[
                             _WaterQualityDatePickerState.dateKey(day)],
                     selected: day != null &&
                         _WaterQualityDatePickerState.dateKey(day) ==
@@ -899,7 +885,7 @@ class _CalendarPanel extends StatelessWidget {
     );
   }
 
-  Map<String, WaterTestReport> _reportsByDate() {
+  Map<String, WaterTestReport> _selectedLocationReportsByDate() {
     final byDate = <String, WaterTestReport>{};
 
     for (final report in reports) {
@@ -947,8 +933,69 @@ class _CalendarPanel extends StatelessWidget {
   }
 }
 
+class _CalendarWeekdayRow extends StatelessWidget {
+  const _CalendarWeekdayRow();
+
+  static const _cellWidth = 44.0;
+  static const _labelStyle = TextStyle(
+    fontFamily: AppTextStyles.fontFamily,
+    fontSize: 13,
+    fontWeight: FontWeight.w700,
+    color: AppColors.textPrimary,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = _labelsFit(
+      context,
+      _WaterQualityDatePickerState._weekdayLabels,
+    )
+        ? _WaterQualityDatePickerState._weekdayLabels
+        : _WaterQualityDatePickerState._compactWeekdayLabels;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        for (final label in labels)
+          SizedBox(
+            width: _cellWidth,
+            child: Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              textAlign: TextAlign.center,
+              style: _labelStyle,
+            ),
+          ),
+      ],
+    );
+  }
+
+  bool _labelsFit(BuildContext context, List<String> labels) {
+    final textDirection = Directionality.of(context);
+    final textScaler = MediaQuery.textScalerOf(context);
+
+    for (final label in labels) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: _labelStyle),
+        textDirection: textDirection,
+        maxLines: 1,
+        textScaler: textScaler,
+      );
+
+      painter.layout();
+      if (painter.width > _cellWidth) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+}
+
 class _CalendarArrowButton extends StatelessWidget {
   const _CalendarArrowButton({
+    super.key,
     required this.icon,
     required this.onTap,
   });
@@ -994,16 +1041,11 @@ class _CalendarDayCell extends StatelessWidget {
     final hasRecord = report != null;
     final dayKey =
         'water-date-day-${_WaterQualityDatePickerState.dateKey(date)}';
-    if (!hasRecord) {
-      return SizedBox(
-        key: ValueKey(dayKey),
-        width: 44,
-        height: 44,
-      );
-    }
-
     final fontSize = selected ? 24.0 : 20.0;
     final fontWeight = selected ? FontWeight.w600 : FontWeight.w400;
+    final textColor = hasRecord
+        ? AppColors.lime
+        : AppColors.textPrimary.withValues(alpha: 0.24);
 
     final cell = SizedBox(
       key: ValueKey(dayKey),
@@ -1031,12 +1073,16 @@ class _CalendarDayCell extends StatelessWidget {
               fontSize: fontSize,
               fontWeight: fontWeight,
               height: 25 / fontSize,
-              color: AppColors.lime,
+              color: textColor,
             ),
           ),
         ],
       ),
     );
+
+    if (!hasRecord) {
+      return cell;
+    }
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

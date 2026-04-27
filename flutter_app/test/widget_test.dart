@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:water_quality_companion/app/pebble_app.dart';
+import 'package:water_quality_companion/theme/app_colors.dart';
 
 void main() {
   testWidgets('renders the three core pages and switches between them',
@@ -77,7 +78,7 @@ void main() {
     expect(find.text('Test history score'), findsOneWidget);
   });
 
-  testWidgets('date picker switches water quality report and location',
+  testWidgets('date picker highlights only the selected water location',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 420 / 160;
@@ -90,22 +91,71 @@ void main() {
     await tester.tap(find.text('Water Quality'));
     await tester.pumpAndSettle();
 
+    Color? calendarDayColor(String dateKey, String label) {
+      return tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(ValueKey('water-date-day-$dateKey')),
+              matching: find.text(label),
+            ),
+          )
+          .style
+          ?.color;
+    }
+
+    final inactiveDateColor = AppColors.textPrimary.withValues(alpha: 0.24);
+
     expect(find.text('Apr 18, 2026'), findsOneWidget);
 
     await tester.tap(find.text('Apr 18, 2026'));
     await tester.pumpAndSettle();
 
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('water-date-day-2026-04-22')),
-        matching: find.text('22'),
-      ),
-      findsNothing,
-    );
+        find.byKey(const ValueKey('water-date-option-animal-park-2026-04-18')),
+        findsNothing);
+    expect(calendarDayColor('2026-04-18', '18'), AppColors.lime);
+    for (final otherLocationDate in {
+      '2026-04-16': '16',
+      '2026-04-17': '17',
+      '2026-04-19': '19',
+      '2026-04-20': '20',
+      '2026-04-21': '21',
+      '2026-04-22': '22',
+      '2026-04-23': '23',
+    }.entries) {
+      expect(
+        calendarDayColor(otherLocationDate.key, otherLocationDate.value),
+        inactiveDateColor,
+      );
+    }
     expect(find.text('Apr 18, 2026'), findsOneWidget);
     expect(find.text('Apr 22, 2026'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('water-date-day-2026-04-16')));
+    await tester.tap(
+      find.byKey(const ValueKey('water-calendar-prev-month')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('March 2026'), findsOneWidget);
+    expect(calendarDayColor('2026-03-21', '21'), AppColors.lime);
+
+    await tester.tap(find.byKey(const ValueKey('water-date-day-2026-03-21')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mar 21, 2026'), findsOneWidget);
+    expect(find.text('Animal Park'), findsOneWidget);
+
+    await tester.tap(find.text('Mar 21, 2026'));
+    await tester.pumpAndSettle();
+
+    expect(calendarDayColor('2026-03-21', '21'), AppColors.lime);
+
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Animal Park'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bayview Pier'));
     await tester.pumpAndSettle();
 
     expect(find.text('Apr 16, 2026'), findsOneWidget);
@@ -113,6 +163,23 @@ void main() {
 
     await tester.tap(find.text('Apr 16, 2026'));
     await tester.pumpAndSettle();
+
+    expect(calendarDayColor('2026-04-16', '16'), AppColors.lime);
+    for (final otherLocationDate in {
+      '2026-04-17': '17',
+      '2026-04-18': '18',
+      '2026-04-19': '19',
+      '2026-04-20': '20',
+      '2026-04-21': '21',
+      '2026-04-22': '22',
+      '2026-04-23': '23',
+    }.entries) {
+      expect(
+        calendarDayColor(otherLocationDate.key, otherLocationDate.value),
+        inactiveDateColor,
+      );
+    }
+
     await tester.tapAt(const Offset(20, 20));
     await tester.pumpAndSettle();
 
@@ -125,13 +192,21 @@ void main() {
 
     await tester.tap(find.text('Apr 22, 2026'));
     await tester.pumpAndSettle();
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('water-date-day-2026-04-22')),
-        matching: find.text('22'),
-      ),
-      findsOneWidget,
-    );
+    expect(calendarDayColor('2026-04-22', '22'), AppColors.lime);
+    for (final otherLocationDate in {
+      '2026-04-16': '16',
+      '2026-04-17': '17',
+      '2026-04-18': '18',
+      '2026-04-19': '19',
+      '2026-04-20': '20',
+      '2026-04-21': '21',
+      '2026-04-23': '23',
+    }.entries) {
+      expect(
+        calendarDayColor(otherLocationDate.key, otherLocationDate.value),
+        inactiveDateColor,
+      );
+    }
   });
 
   testWidgets('toggles question answers on the ask page',

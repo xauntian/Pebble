@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/app_snapshot.dart';
+import '../models/device_connection.dart';
+import '../models/water_test_report.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
@@ -14,26 +16,30 @@ import 'progress_ring.dart';
 class AverageTestsCard extends StatelessWidget {
   const AverageTestsCard({
     super.key,
-    required this.snapshot,
+    required this.data,
   });
 
-  final AppSnapshot snapshot;
+  final AverageTestsCardData data;
 
   @override
   Widget build(BuildContext context) {
     return _MetricCardFrame(
       child: SizedBox(
-        height: 174,
+        height: 230,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Avg test Number',
-                style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'Avg test Number',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: AppSpacing.lg),
             Expanded(
               child: Center(
                 child: SizedBox(
-                  width: 149,
+                  width: double.infinity,
                   child: Column(
                     children: [
                       Align(
@@ -44,20 +50,25 @@ class AverageTestsCard extends StatelessWidget {
                             style: AppTextStyles.metricPrefix,
                             children: [
                               TextSpan(
-                                text: '${snapshot.averageTestScore}',
+                                text: '${data.averageTestScore}',
                                 style: AppTextStyles.metricValue,
                               ),
                               TextSpan(
-                                text: '/ ${snapshot.monthlyGoal}',
+                                text: '/ ${data.monthlyGoal}',
                                 style: AppTextStyles.metricSuffix,
                               ),
                             ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 8),
                       Expanded(
-                        child: _MiniBarChart(values: snapshot.chartValues),
+                        child: _MiniBarChart(
+                          values: data.chartValues,
+                          labels: data.chartLabels,
+                          highlightIndex: data.highlightIndex,
+                          highlightLabel: data.highlightLabel,
+                        ),
                       ),
                     ],
                   ),
@@ -71,20 +82,102 @@ class AverageTestsCard extends StatelessWidget {
   }
 }
 
+class AverageTestsCardData {
+  const AverageTestsCardData({
+    required this.averageTestScore,
+    required this.monthlyGoal,
+    required this.chartValues,
+    required this.chartLabels,
+    this.highlightIndex,
+    this.highlightLabel,
+  });
+
+  factory AverageTestsCardData.fromSnapshot(AppSnapshot snapshot) {
+    final chartValues = List<double>.unmodifiable(snapshot.chartValues);
+    final chartLabels =
+        List<String>.unmodifiable(List.filled(chartValues.length, ''));
+    final highlightIndex = chartValues.isEmpty ? null : chartValues.length - 1;
+
+    return AverageTestsCardData(
+      averageTestScore: snapshot.averageTestScore,
+      monthlyGoal: snapshot.monthlyGoal,
+      chartValues: chartValues,
+      chartLabels: chartLabels,
+      highlightIndex: highlightIndex,
+      highlightLabel: highlightIndex == null
+          ? null
+          : chartValues[highlightIndex].round().toString(),
+    );
+  }
+
+  factory AverageTestsCardData.fromScores({
+    required List<num> recentScores,
+    required int monthlyGoal,
+    List<String> labels = const [],
+  }) {
+    final scores = List<double>.unmodifiable(
+      recentScores.map((score) => score.toDouble()),
+    );
+    final chartLabels = List<String>.unmodifiable(
+      List.generate(
+        scores.length,
+        (index) => index < labels.length ? labels[index] : '',
+      ),
+    );
+    final average = scores.isEmpty
+        ? 0
+        : (scores.reduce((total, score) => total + score) / scores.length)
+            .round();
+    final highlightIndex = scores.isEmpty ? null : scores.length - 1;
+
+    return AverageTestsCardData(
+      averageTestScore: average,
+      monthlyGoal: monthlyGoal,
+      chartValues: scores,
+      chartLabels: chartLabels,
+      highlightIndex: highlightIndex,
+      highlightLabel: highlightIndex == null
+          ? null
+          : scores[highlightIndex].round().toString(),
+    );
+  }
+
+  factory AverageTestsCardData.fromReports({
+    required List<WaterTestReport> reports,
+    required int monthlyGoal,
+  }) {
+    final sortedReports = [...reports]
+      ..sort((a, b) => a.testedAt.compareTo(b.testedAt));
+
+    return AverageTestsCardData.fromScores(
+      recentScores: sortedReports.map((report) => report.score).toList(),
+      monthlyGoal: monthlyGoal,
+      labels: sortedReports.map(_shortReportDateLabel).toList(),
+    );
+  }
+
+  static String _shortReportDateLabel(WaterTestReport report) {
+    return report.testedAtLabel.split(',').first;
+  }
+
+  final int averageTestScore;
+  final int monthlyGoal;
+  final List<double> chartValues;
+  final List<String> chartLabels;
+  final int? highlightIndex;
+  final String? highlightLabel;
+}
+
 class DeviceStatusCard extends StatelessWidget {
   const DeviceStatusCard({
     super.key,
-    required this.snapshot,
+    required this.data,
   });
 
-  final AppSnapshot snapshot;
+  final DeviceStatusCardData data;
 
   @override
   Widget build(BuildContext context) {
-    final batteryLabel = snapshot.battery_number.trim().endsWith('%')
-        ? snapshot.battery_number.trim()
-        : '${snapshot.battery_number.trim()}%';
-
     return _MetricCardFrame(
       child: SizedBox(
         height: 203,
@@ -94,7 +187,7 @@ class DeviceStatusCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    "Your's",
+                    'Your Device',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleLarge,
@@ -108,32 +201,27 @@ class DeviceStatusCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  batteryLabel,
-                  style: AppTextStyles.batteryLabel,
+                  data.batteryLabel,
+                  style: AppTextStyles.batteryLabel.copyWith(
+                    color: data.batteryLabelColor,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
-            ClipOval(
-              child: SizedBox(
-                width: 134,
-                height: 110,
-                child: Image.asset(
-                  'assets/figma/home-device.png',
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                ),
-              ),
+            _DeviceConnectionVisual(
+              isConnected: data.isConnected,
+              productAssetPath: data.productAssetPath,
             ),
             const SizedBox(height: AppSpacing.lg),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                _ConnectionDot(),
-                SizedBox(width: AppSpacing.sm),
+              children: [
+                _ConnectionDot(color: data.connectionDotColor),
+                const SizedBox(width: AppSpacing.sm),
                 Flexible(
                   child: Text(
-                    'Test Kit',
+                    data.deviceName,
                     style: AppTextStyles.deviceLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -142,11 +230,109 @@ class DeviceStatusCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            const Text(
-              'Connected',
+            Text(
+              data.statusLabel,
               style: AppTextStyles.statusLabel,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class DeviceStatusCardData {
+  const DeviceStatusCardData({
+    required this.isConnected,
+    this.batteryPercent,
+    this.deviceName = 'Test Kit',
+    this.productAssetPath,
+  });
+
+  factory DeviceStatusCardData.fromConnection(DeviceConnection connection) {
+    return DeviceStatusCardData(
+      isConnected: connection.isConnected,
+      batteryPercent: connection.isConnected ? connection.batteryPercent : null,
+      deviceName: connection.deviceName,
+      productAssetPath:
+          connection.isConnected ? connection.productAssetPath : null,
+    );
+  }
+
+  factory DeviceStatusCardData.fromSnapshot(AppSnapshot snapshot) {
+    final batteryPercent = int.tryParse(
+      snapshot.battery_number.replaceAll('%', '').trim(),
+    );
+
+    return DeviceStatusCardData(
+      isConnected: snapshot.deviceConnected,
+      batteryPercent: snapshot.deviceConnected ? batteryPercent : null,
+    );
+  }
+
+  final bool isConnected;
+  final int? batteryPercent;
+  final String deviceName;
+  final String? productAssetPath;
+
+  String get statusLabel => isConnected ? 'connected' : 'unconnected';
+
+  String get batteryLabel {
+    if (!isConnected || batteryPercent == null) {
+      return '--';
+    }
+
+    return '$batteryPercent%';
+  }
+
+  Color get batteryLabelColor =>
+      isConnected ? AppColors.textPrimary : AppColors.textMuted;
+
+  Color get connectionDotColor =>
+      isConnected ? AppColors.success : AppColors.mapTransitOrange;
+}
+
+class _DeviceConnectionVisual extends StatelessWidget {
+  const _DeviceConnectionVisual({
+    required this.isConnected,
+    required this.productAssetPath,
+  });
+
+  final bool isConnected;
+  final String? productAssetPath;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isConnected && productAssetPath != null) {
+      return ClipOval(
+        child: SizedBox(
+          width: 134,
+          height: 110,
+          child: Image.asset(
+            productAssetPath!,
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+          ),
+        ),
+      );
+    }
+
+    return ClipOval(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.limeSoft.withValues(alpha: 0.52),
+          border: Border.all(
+            color: AppColors.textSecondary.withValues(alpha: 0.16),
+          ),
+        ),
+        child: const SizedBox(
+          width: 134,
+          height: 110,
+          child: Icon(
+            Icons.bluetooth_searching_rounded,
+            size: 36,
+            color: AppColors.textSecondary,
+          ),
         ),
       ),
     );
@@ -227,21 +413,72 @@ class TestLifeCard extends StatelessWidget {
   }
 }
 
-class WaterQualityCard extends StatelessWidget {
-  const WaterQualityCard({
-    super.key,
-    required this.snapshot,
+typedef WaterQualityCardOpenCallback = void Function(
+  WaterQualityCardSelection selection,
+);
+
+class WaterQualityCardSelection {
+  const WaterQualityCardSelection({
+    required this.location,
+    required this.regionCode,
   });
 
-  final AppSnapshot snapshot;
+  final WaterQualityLocationOption location;
+  final String regionCode;
+}
+
+class WaterQualityCard extends StatefulWidget {
+  const WaterQualityCard({
+    super.key,
+    required this.data,
+    this.onOpen,
+  });
+
+  final WaterQualityCardData data;
+  final WaterQualityCardOpenCallback? onOpen;
+
+  @override
+  State<WaterQualityCard> createState() => _WaterQualityCardState();
+}
+
+class _WaterQualityCardState extends State<WaterQualityCard> {
+  late WaterQualityLocationOption _selectedLocation;
+  late String _selectedRegion;
+
+  @override
+  void initState() {
+    super.initState();
+    _setInitialSelection();
+  }
+
+  @override
+  void didUpdateWidget(covariant WaterQualityCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data.locations != widget.data.locations) {
+      _setInitialSelection();
+    }
+  }
+
+  void _setInitialSelection() {
+    _selectedLocation = widget.data.locations.first;
+    _selectedRegion = _selectedLocation.regionCode;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final waterQualityPercent =
-        snapshot.waterQualityScore.clamp(0, 100).toInt();
+    final regionLocations = widget.data.locations
+        .where((location) => location.regionCode == _selectedRegion)
+        .toList(growable: false);
+    final locationItems =
+        regionLocations.isEmpty ? widget.data.locations : regionLocations;
+    if (!locationItems.contains(_selectedLocation)) {
+      _selectedLocation = locationItems.first;
+    }
+
+    final waterQualityPercent = _selectedLocation.score.clamp(0, 100).toInt();
     final waterQualityProgress = waterQualityPercent / 100.0;
 
-    return _MetricCardFrame(
+    final card = _MetricCardFrame(
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 163),
         child: Column(
@@ -258,9 +495,13 @@ class WaterQualityCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Water Quality',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
+                const SizedBox(width: AppSpacing.xs),
+                const _HeaderChevron(),
               ],
             ),
             const SizedBox(height: 12),
@@ -270,11 +511,35 @@ class WaterQualityCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: DropdownPillChip(label: snapshot.locationName),
+                      child: FigmaPillDropdown<WaterQualityLocationOption>(
+                        value: _selectedLocation,
+                        items: locationItems,
+                        labelFor: (location) => location.name,
+                        onSelected: (location) {
+                          setState(() {
+                            _selectedLocation = location;
+                            _selectedRegion = location.regionCode;
+                          });
+                        },
+                      ),
                     ),
                     const SizedBox(width: AppSpacing.xs),
                     Expanded(
-                      child: DropdownPillChip(label: snapshot.locationShort),
+                      child: FigmaPillDropdown<String>(
+                        value: _selectedRegion,
+                        items: widget.data.regionCodes,
+                        labelFor: (region) => region,
+                        onSelected: (region) {
+                          setState(() {
+                            _selectedRegion = region;
+                            _selectedLocation =
+                                widget.data.locations.firstWhere(
+                              (location) => location.regionCode == region,
+                              orElse: () => _selectedLocation,
+                            );
+                          });
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -303,7 +568,134 @@ class WaterQualityCard extends StatelessWidget {
         ),
       ),
     );
+
+    if (widget.onOpen == null) {
+      return card;
+    }
+
+    return Semantics(
+      button: true,
+      label: 'Open water quality',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          widget.onOpen!(
+            WaterQualityCardSelection(
+              location: _selectedLocation,
+              regionCode: _selectedRegion,
+            ),
+          );
+        },
+        child: card,
+      ),
+    );
   }
+}
+
+class WaterQualityCardData {
+  const WaterQualityCardData({
+    required this.locations,
+  });
+
+  factory WaterQualityCardData.fromReports(List<WaterTestReport> reports) {
+    final latestReports = <String, WaterTestReport>{};
+
+    for (final report in reports) {
+      final current = latestReports[report.locationId];
+      if (current == null || report.testedAt.isAfter(current.testedAt)) {
+        latestReports[report.locationId] = report;
+      }
+    }
+
+    final locations = latestReports.values.map((report) {
+      return WaterQualityLocationOption(
+        id: report.locationId,
+        name: report.locationName,
+        regionCode: report.regionCode,
+        score: report.score,
+      );
+    }).toList(growable: false)
+      ..sort((a, b) {
+        final regionCompare = _regionSortOrder(a.regionCode)
+            .compareTo(_regionSortOrder(b.regionCode));
+        if (regionCompare != 0) {
+          return regionCompare;
+        }
+
+        final regionNameCompare = a.regionCode.compareTo(b.regionCode);
+        if (regionNameCompare != 0) {
+          return regionNameCompare;
+        }
+
+        return a.name.compareTo(b.name);
+      });
+
+    return WaterQualityCardData(locations: List.unmodifiable(locations));
+  }
+
+  static int _regionSortOrder(String regionCode) =>
+      regionCode == 'SF, CA' ? 0 : 1;
+
+  final List<WaterQualityLocationOption> locations;
+
+  List<String> get regionCodes {
+    return List.unmodifiable(
+      locations.map((location) => location.regionCode).toSet(),
+    );
+  }
+}
+
+class WaterQualityLocationOption {
+  const WaterQualityLocationOption({
+    required this.id,
+    required this.name,
+    required this.regionCode,
+    required this.score,
+  });
+
+  final String id;
+  final String name;
+  final String regionCode;
+  final int score;
+}
+
+class _HeaderChevron extends StatelessWidget {
+  const _HeaderChevron();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 5,
+      height: 9,
+      child: CustomPaint(
+        painter: _HeaderChevronPainter(),
+      ),
+    );
+  }
+}
+
+class _HeaderChevronPainter extends CustomPainter {
+  const _HeaderChevronPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.textPrimary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final path = Path()
+      ..moveTo(size.width * 0.22, size.height * 0.12)
+      ..lineTo(size.width * 0.78, size.height * 0.5)
+      ..lineTo(size.width * 0.22, size.height * 0.88);
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeaderChevronPainter oldDelegate) => false;
 }
 
 class _MetricCardFrame extends StatelessWidget {
@@ -321,101 +713,71 @@ class _MetricCardFrame extends StatelessWidget {
 }
 
 class _MiniBarChart extends StatelessWidget {
-  const _MiniBarChart({required this.values});
+  const _MiniBarChart({
+    required this.values,
+    required this.labels,
+    this.highlightIndex,
+    this.highlightLabel,
+  });
 
   final List<double> values;
+  final List<String> labels;
+  final int? highlightIndex;
+  final String? highlightLabel;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        const axisWidth = 22.0;
+        const maxChartHeight = 126.0;
+        const maxPlotHeight = 102.0;
+        final availableHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : maxChartHeight;
+        final chartHeight = math.min(maxChartHeight, availableHeight);
+        final chartPlotHeight = math.min(
+          maxPlotHeight,
+          math.max(48.0, chartHeight - 24),
+        );
+        final chartWidth =
+            constraints.maxWidth.isFinite ? constraints.maxWidth : 149.0;
+
         return Align(
           alignment: Alignment.bottomLeft,
-          child: FittedBox(
-            fit: BoxFit.contain,
-            alignment: Alignment.bottomLeft,
-            child: SizedBox(
-              width: 149,
-              height: 86,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: const [
-                      Text('100', style: AppTextStyles.chartLabel),
-                      SizedBox(height: 11),
-                      Text('50', style: AppTextStyles.chartLabel),
-                      SizedBox(height: 11),
-                      Text('0', style: AppTextStyles.chartLabel),
-                      SizedBox(height: 12),
-                    ],
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
+          child: SizedBox(
+            width: chartWidth,
+            height: chartHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: SizedBox(
+                    width: axisWidth,
+                    height: chartPlotHeight,
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: List.generate(values.length, (index) {
-                              final isHighlighted = index == 3;
-                              final height = values[index];
-
-                              return Column(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  if (isHighlighted)
-                                    Container(
-                                      margin: const EdgeInsets.only(bottom: 3),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 1,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.textSecondary,
-                                        borderRadius: BorderRadius.circular(13),
-                                      ),
-                                      child: const Text(
-                                        '99',
-                                        style: AppTextStyles.dataPoint,
-                                      ),
-                                    ),
-                                  Container(
-                                    width: 6,
-                                    height: math.min(height * 0.56, 38),
-                                    decoration: BoxDecoration(
-                                      color: isHighlighted
-                                          ? AppColors.textSecondary
-                                          : AppColors.textPrimary,
-                                      borderRadius: BorderRadius.circular(17),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              SizedBox(width: 12),
-                              Text('Mar', style: AppTextStyles.chartLabel),
-                              Text('Jun', style: AppTextStyles.chartLabel),
-                              SizedBox(width: 12),
-                            ],
-                          ),
-                        ),
+                        Text('100', style: AppTextStyles.chartLabel),
+                        Text('50', style: AppTextStyles.chartLabel),
+                        Text('0', style: AppTextStyles.chartLabel),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ResponsiveBarPlot(
+                    values: values,
+                    labels: labels,
+                    highlightIndex: highlightIndex,
+                    highlightLabel: highlightLabel,
+                    plotHeight: chartPlotHeight,
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -424,16 +786,153 @@ class _MiniBarChart extends StatelessWidget {
   }
 }
 
+class _ResponsiveBarPlot extends StatelessWidget {
+  const _ResponsiveBarPlot({
+    required this.values,
+    required this.labels,
+    required this.plotHeight,
+    this.highlightIndex,
+    this.highlightLabel,
+  });
+
+  final List<double> values;
+  final List<String> labels;
+  final double plotHeight;
+  final int? highlightIndex;
+  final String? highlightLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const barWidth = 6.0;
+        const minBarGap = 7.0;
+
+        final visibleCount = _visibleBarCount(
+          availableWidth: constraints.maxWidth,
+          barWidth: barWidth,
+          minBarGap: minBarGap,
+          valueCount: values.length,
+        );
+        final startIndex = values.length - visibleCount;
+        final visibleValues = values.skip(startIndex).toList(growable: false);
+        final visibleLabels = labels.skip(startIndex).toList(growable: false);
+        final visibleHighlightIndex =
+            highlightIndex == null ? null : highlightIndex! - startIndex;
+
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            SizedBox(
+              height: plotHeight,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(visibleValues.length, (index) {
+                  final isHighlighted = visibleHighlightIndex == index;
+                  final chartValue =
+                      visibleValues[index].clamp(0, 100).toDouble();
+                  final label =
+                      highlightLabel ?? visibleValues[index].round().toString();
+
+                  return Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (isHighlighted)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.textSecondary,
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Text(
+                            label,
+                            style: AppTextStyles.dataPoint,
+                          ),
+                        ),
+                      Container(
+                        width: barWidth,
+                        height: chartValue / 100 * plotHeight,
+                        decoration: BoxDecoration(
+                          color: isHighlighted
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                          borderRadius: BorderRadius.circular(17),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      visibleLabels.isEmpty ? '' : visibleLabels.first,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.chartLabel,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      visibleLabels.isEmpty ? '' : visibleLabels.last,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: AppTextStyles.chartLabel,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  int _visibleBarCount({
+    required double availableWidth,
+    required double barWidth,
+    required double minBarGap,
+    required int valueCount,
+  }) {
+    if (valueCount == 0) {
+      return 0;
+    }
+
+    final width = availableWidth.isFinite ? availableWidth : 149.0;
+    final fitCount = ((width + minBarGap) / (barWidth + minBarGap)).floor();
+
+    return math.min(valueCount, math.max(1, fitCount));
+  }
+}
+
 class _ConnectionDot extends StatelessWidget {
-  const _ConnectionDot();
+  const _ConnectionDot({
+    required this.color,
+  });
+
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: 6,
       height: 6,
-      decoration: const BoxDecoration(
-        color: AppColors.success,
+      decoration: BoxDecoration(
+        color: color,
         shape: BoxShape.circle,
       ),
     );

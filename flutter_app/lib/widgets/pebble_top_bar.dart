@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
-import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 import 'pill_chip.dart';
 
@@ -28,14 +27,9 @@ class PebbleTopBar extends StatelessWidget {
           PillChip(
             label: dateLabel,
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-            backgroundColor: AppColors.glass,
-            boxShadow: AppShadows.card,
+            backgroundColor: AppColors.white.withValues(alpha: 0.2),
+            boxShadow: const [],
             borderRadius: AppRadius.pill,
-            leading: const Icon(
-              Icons.calendar_today_outlined,
-              size: 16,
-              color: AppColors.textPrimary,
-            ),
             textStyle: AppTextStyles.date,
           ),
           const Spacer(),

@@ -12,6 +12,9 @@ class AppColors {
   static const lime = Color(0xFF68DA1F);
   static const limeSoft = Color(0xFFDAEECB);
   static const success = Color(0xFF27E48B);
+  static const waterQualitySafe = Color(0xFF27B96D);
+  static const waterQualityCaution = Color(0xFFF0A323);
+  static const waterQualityUnsafe = Color(0xFFE84C4F);
 
   static const white = Color(0xFFFFFFFF);
   static const glass = Color(0x80FFFFFF);
@@ -33,4 +36,14 @@ class AppColors {
   static const mapTransitRed = Color(0xFFE43C45);
   static const mapRouteRed = Color(0xFFE35A62);
   static const mapWater = Color(0x334DB8FF);
+
+  static Color waterQualityScoreColor(num score) {
+    if (score >= 80) {
+      return waterQualitySafe;
+    }
+    if (score >= 55) {
+      return waterQualityCaution;
+    }
+    return waterQualityUnsafe;
+  }
 }

@@ -3,7 +3,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
-import '../theme/app_shadows.dart';
 import 'app_destination.dart';
 
 class AppNavButton extends StatelessWidget {
@@ -58,23 +57,17 @@ class AppNavButton extends StatelessWidget {
           key: ValueKey(keyValue),
           borderRadius: BorderRadius.circular(AppRadius.navItem),
           onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
+          child: SizedBox(
             width: width,
             height: 52,
-            decoration: BoxDecoration(
-              color: isActive ? AppColors.olive : Colors.transparent,
-              borderRadius: BorderRadius.circular(AppRadius.navItem),
-              boxShadow: isActive ? AppShadows.navItem : null,
-            ),
-            alignment: Alignment.center,
-            child: SvgPicture.asset(
-              iconAsset,
-              width: iconSize,
-              height: iconSize,
-              fit: BoxFit.contain,
-              colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+            child: Center(
+              child: SvgPicture.asset(
+                iconAsset,
+                width: iconSize,
+                height: iconSize,
+                fit: BoxFit.contain,
+                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+              ),
             ),
           ),
         ),

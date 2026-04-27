@@ -5,6 +5,7 @@ class AppSnapshot {
     required this.averageTestScore,
     required this.monthlyGoal,
     required this.battery_number,
+    required this.deviceConnected,
     required this.testLife,
     required this.waterQualityScore,
     required this.chartValues,
@@ -17,6 +18,7 @@ class AppSnapshot {
       : averageTestScore = 75,
         monthlyGoal = 100,
         battery_number = '85',
+        deviceConnected = true,
         testLife = 89,
         waterQualityScore = 66,
         chartValues = const [41, 55, 44, 65, 62, 33, 41, 55, 49],
@@ -27,6 +29,7 @@ class AppSnapshot {
   final int averageTestScore;
   final int monthlyGoal;
   final String battery_number;
+  final bool deviceConnected;
   final int testLife;
   final int waterQualityScore;
   final List<double> chartValues;

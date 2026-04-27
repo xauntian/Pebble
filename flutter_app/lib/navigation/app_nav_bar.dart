@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
+import '../theme/app_shadows.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/pebble_glass_card.dart';
 import 'app_destination.dart';
 import 'app_nav_button.dart';
+
+const _navIndicatorDuration = Duration(milliseconds: 500);
+const _navItemHeight = 52.0;
 
 class AppNavBar extends StatelessWidget {
   const AppNavBar({
@@ -33,6 +38,8 @@ class AppNavBar extends StatelessWidget {
         final gap =
             ((contentWidth - buttonWidth * buttonCount) / (buttonCount - 1))
                 .clamp(0.0, double.infinity);
+        final selectedIndex = currentDestination.index;
+        final indicatorLeft = selectedIndex * (buttonWidth + gap);
 
         return PebbleGlassCard(
           borderRadius: const BorderRadius.all(Radius.circular(AppRadius.nav)),
@@ -40,30 +47,53 @@ class AppNavBar extends StatelessWidget {
             horizontal: horizontalPadding,
             vertical: AppSpacing.navVerticalPadding,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AppNavButton(
-                destination: AppDestination.home,
-                currentDestination: currentDestination,
-                onTap: () => onChanged(AppDestination.home),
-                width: buttonWidth,
-              ),
-              SizedBox(width: gap),
-              AppNavButton(
-                destination: AppDestination.map,
-                currentDestination: currentDestination,
-                onTap: () => onChanged(AppDestination.map),
-                width: buttonWidth,
-              ),
-              SizedBox(width: gap),
-              AppNavButton(
-                destination: AppDestination.ask,
-                currentDestination: currentDestination,
-                onTap: () => onChanged(AppDestination.ask),
-                width: buttonWidth,
-              ),
-            ],
+          child: SizedBox(
+            width: contentWidth,
+            height: _navItemHeight,
+            child: Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: _navIndicatorDuration,
+                  curve: Curves.easeOutCubic,
+                  left: indicatorLeft,
+                  top: 0,
+                  width: buttonWidth,
+                  height: _navItemHeight,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.olive,
+                      borderRadius: BorderRadius.circular(AppRadius.navItem),
+                      boxShadow: AppShadows.navItem,
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AppNavButton(
+                      destination: AppDestination.home,
+                      currentDestination: currentDestination,
+                      onTap: () => onChanged(AppDestination.home),
+                      width: buttonWidth,
+                    ),
+                    SizedBox(width: gap),
+                    AppNavButton(
+                      destination: AppDestination.map,
+                      currentDestination: currentDestination,
+                      onTap: () => onChanged(AppDestination.map),
+                      width: buttonWidth,
+                    ),
+                    SizedBox(width: gap),
+                    AppNavButton(
+                      destination: AppDestination.ask,
+                      currentDestination: currentDestination,
+                      onTap: () => onChanged(AppDestination.ask),
+                      width: buttonWidth,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },

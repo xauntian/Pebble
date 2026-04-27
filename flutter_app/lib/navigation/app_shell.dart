@@ -8,6 +8,7 @@ import '../pages/home_page.dart';
 import '../pages/map_page.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/responsive_layout.dart';
 import 'app_destination.dart';
 import 'app_nav_bar.dart';
 
@@ -40,7 +41,7 @@ class _AppShellState extends State<AppShell> {
         bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final shellWidth = math.min(430.0, constraints.maxWidth);
+            final shellWidth = constraints.maxWidth;
 
             return Align(
               alignment: Alignment.topCenter,
@@ -88,17 +89,34 @@ class _NavigationLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.pageHorizontal,
-        AppSpacing.lg,
-        AppSpacing.pageHorizontal,
-        AppSpacing.navBottomOffset + bottomInset,
-      ),
-      child: AppNavBar(
-        currentDestination: destination,
-        onChanged: onChanged,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding =
+            ResponsiveLayout.horizontalPadding(constraints.maxWidth);
+        final navWidth = math.min(
+          430.0,
+          math.max(0.0, constraints.maxWidth - horizontalPadding * 2),
+        );
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            AppSpacing.lg,
+            horizontalPadding,
+            AppSpacing.navBottomOffset + bottomInset,
+          ),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: SizedBox(
+              width: navWidth,
+              child: AppNavBar(
+                currentDestination: destination,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

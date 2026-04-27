@@ -1,27 +1,43 @@
 # Pebble
 
-Pebble 是一个基于 Flutter 的移动端原型项目，当前 UI 已重置为 3 个核心页面：`Home`、`Map`、`Ask`。这 3 个页面按照最新 Figma 设计重建，并统一使用浅绿色背景、玻璃卡片、底部导航和本地图片资源。
+Pebble is a Flutter mobile prototype for a water-quality companion app. The main application lives in `flutter_app/`, and the repository also keeps a local Flutter SDK in `flutter/` for Windows-based development.
 
-## 当前状态
+## Current App
 
-- `Home`：健康测试总览页，包含平均测试数据、设备状态、Test Life、Water Quality 4 张卡片
-- `Map`：地图页，包含搜索栏、地图标记和地点信息卡片
-- `Ask`：知识问答页，包含常见问题列表和 AI Search 卡片
-- 本地资源已导入 `flutter_app/assets/`
-- 当前代码通过 `flutter analyze` 和 `flutter test`
+- `Home`: health summary dashboard with average test data, device status, test life, and water quality entry points.
+- `Map`: water-location map experience with search, map markers, place cards, and location detail states.
+- `Water Quality`: report detail page with region and location filters, a region-aware calendar picker, measurement cards, score visualization, and test history.
+- `Ask`: water knowledge Q&A plus AI Search with suggestion chips, typed input, voice prompt state, local response handling, and Done/reset behavior.
+- Shared UI: glass cards, pill chips, animated dropdowns, progress rings, top bar, bottom navigation, responsive layout helpers, and local Figma-derived assets.
 
-## 项目结构
+## Generated Change Summary
 
-- `flutter_app/`：Flutter 应用主体
-- `flutter_app/lib/main.dart`：应用入口
-- `flutter_app/lib/app/pebble_app.dart`：三页导航壳层
-- `flutter_app/lib/pages/`：`Home` / `Map` / `Ask` 页面
-- `flutter_app/lib/widgets/`：底部导航、玻璃卡片、环形进度等共享组件
-- `flutter_app/lib/theme/design_tokens.dart`：颜色、圆角、阴影等设计令牌
-- `flutter_app/assets/`：从 Figma 固化下来的图片资源
-- `flutter/`：本地 Flutter SDK
+- Added structured demo data for device connection state and water test reports.
+- Added water-quality domain models and an API abstraction for report loading.
+- Built the Water Quality page with location filters, region switching, calendar date selection, score display, measurements, and history.
+- Updated the calendar so dates only appear for the currently selected region, and other regions appear only after switching regions.
+- Reworked AI Search so the result layer uses the original card container and no longer overflows after Done.
+- Expanded Home metric cards and connected the Water Quality card into the detail page.
+- Rebuilt Map interactions around searchable water points, map markers, place cards, and rating/status UI.
+- Improved navigation, app shell behavior, top bar, pill chip menus, progress ring animation, responsive spacing, and theme colors.
+- Added `fl_chart`, `flutter_map`, `http`, and `latlong2` dependencies.
+- Added widget tests for navigation, narrow viewport layout, Water Quality calendar behavior, Ask Q&A, AI Search submit, and Done reset.
 
-## 本地运行
+## Project Structure
+
+- `flutter_app/`: Flutter application source.
+- `flutter_app/lib/app/`: app bootstrap and shell.
+- `flutter_app/lib/navigation/`: destination definitions, bottom navigation, and shell layout.
+- `flutter_app/lib/pages/`: `Home`, `Map`, `Water Quality`, and `Ask` pages.
+- `flutter_app/lib/widgets/`: shared cards, chips, navigation controls, progress rings, and map/search widgets.
+- `flutter_app/lib/models/`: app snapshot, device connection, and water test report models.
+- `flutter_app/lib/data/`: local demo data for device and water reports.
+- `flutter_app/lib/services/`: local AI response and water report service abstractions.
+- `flutter_app/lib/theme/`: colors, spacing, radius, shadows, typography, theme setup, and responsive layout helpers.
+- `flutter_app/assets/`: local Figma-derived assets and fonts.
+- `flutter/`: local Flutter SDK.
+
+## Run Locally
 
 ```powershell
 cd flutter_app
@@ -29,7 +45,7 @@ cd flutter_app
 ..\flutter\bin\flutter.bat run
 ```
 
-## 验证
+## Verify
 
 ```powershell
 cd flutter_app
@@ -37,11 +53,13 @@ cd flutter_app
 ..\flutter\bin\flutter.bat test
 ```
 
-## 打包 APK
+## Build APK
 
 ```powershell
 cd flutter_app
 ..\flutter\bin\flutter.bat build apk --release
 ```
 
-输出文件默认位于 `flutter_app/build/app/outputs/flutter-apk/app-release.apk`。
+The release APK is generated at `flutter_app/build/app/outputs/flutter-apk/app-release.apk`.
+
+Full application development was completed with Codex.

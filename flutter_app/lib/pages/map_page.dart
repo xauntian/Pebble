@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../data/sf_water_test_reports.dart';
 import '../models/app_snapshot.dart';
+import '../models/water_test_report.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_spacing.dart';
+import '../theme/responsive_layout.dart';
 import '../widgets/map_search_bar.dart';
 import '../widgets/pebble_glass_card.dart';
 
@@ -28,75 +31,22 @@ class _MapPageState extends State<MapPage> {
   static const _sanFrancisco = LatLng(37.7749, -122.4194);
   static const _defaultZoom = 13.4;
   static const _detailZoom = 15.2;
-  static const _detailFadeDuration = Duration(milliseconds: 180);
+  static const _detailFadeDuration = Duration(milliseconds: 500);
 
   final MapController _mapController = MapController();
   WaterPoint? _selectedPoint;
   WaterPoint? _detailPoint;
   bool _isDetailVisible = false;
 
-  static const List<WaterPoint> _waterPoints = [
-    WaterPoint(
-      id: 'animal-park',
-      name: 'Animal Park',
-      regionCode: 'SF,CA',
-      point: LatLng(37.7694, -122.4862),
-      score: 92,
-      tds: 118,
-      ph: 7.3,
-      status: WaterStatus.safe,
-      drinkingAdvice: 'This Place is better to drink after filter',
-      lastTested: 'Jun 10, 2024',
-    ),
-    WaterPoint(
-      id: 'mission-creek-tap',
-      name: 'Mission Creek Tap',
-      regionCode: 'SF,CA',
-      point: LatLng(37.7727, -122.3910),
-      score: 78,
-      tds: 164,
-      ph: 7.0,
-      status: WaterStatus.uncertain,
-      drinkingAdvice: 'Filter before drinking from this nearby source',
-      lastTested: 'May 10, 2025',
-    ),
-    WaterPoint(
-      id: 'embarcadero-fountain',
-      name: 'Embarcadero Fountain',
-      regionCode: 'SF,CA',
-      point: LatLng(37.7955, -122.3937),
-      score: 84,
-      tds: 136,
-      ph: 7.5,
-      status: WaterStatus.safe,
-      drinkingAdvice: 'Good for drinking after a quick flush',
-      lastTested: 'Apr 18, 2025',
-    ),
-    WaterPoint(
-      id: 'soma-station',
-      name: 'SoMa Station',
-      regionCode: 'SF,CA',
-      point: LatLng(37.7812, -122.4080),
-      score: 63,
-      tds: 242,
-      ph: 6.6,
-      status: WaterStatus.uncertain,
-      drinkingAdvice: 'Use a filter before drinking here',
-      lastTested: 'Mar 22, 2025',
-    ),
-    WaterPoint(
-      id: 'bayview-pier',
-      name: 'Bayview Pier',
-      regionCode: 'SF,CA',
-      point: LatLng(37.7297, -122.3742),
-      score: 41,
-      tds: 389,
-      ph: 6.1,
-      status: WaterStatus.unsafe,
-      drinkingAdvice: 'Avoid drinking until the next test clears',
-      lastTested: 'Feb 08, 2025',
-    ),
-  ];
+  static final List<WaterPoint> _waterPoints =
+      SfWaterTestReports.latestByLocation()
+          .map(
+            (report) => WaterPoint.fromReport(
+              report,
+              reports: SfWaterTestReports.forLocation(report.locationId),
+            ),
+          )
+          .toList(growable: false);
 
   @override
   void dispose() {
@@ -141,86 +91,93 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _sanFrancisco,
-              initialZoom: _defaultZoom,
-              minZoom: 11,
-              maxZoom: 18,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-              ),
-              backgroundColor: const Color(0xFFF5F6F2),
-              onTap: (_, __) => _hidePointDetails(),
-              onPositionChanged: (_, hasGesture) {
-                if (hasGesture) {
-                  _hidePointDetails();
-                }
-              },
-            ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
-                userAgentPackageName: 'com.pebble.water_quality_companion',
-              ),
-              MarkerLayer(
-                markers: [
-                  for (final point in _waterPoints)
-                    Marker(
-                      point: point.point,
-                      width: 54,
-                      height: 54,
-                      alignment: Alignment.center,
-                      child: _WaterMarker(
-                        point: point,
-                        selected: point == _selectedPoint,
-                        onTap: () => _showPointDetails(point),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding =
+            ResponsiveLayout.horizontalPadding(constraints.maxWidth);
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _sanFrancisco,
+                  initialZoom: _defaultZoom,
+                  minZoom: 11,
+                  maxZoom: 18,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                  ),
+                  backgroundColor: const Color(0xFFF5F6F2),
+                  onTap: (_, __) => _hidePointDetails(),
+                  onPositionChanged: (_, hasGesture) {
+                    if (hasGesture) {
+                      _hidePointDetails();
+                    }
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png',
+                    subdomains: const ['a', 'b', 'c', 'd'],
+                    userAgentPackageName: 'com.pebble.water_quality_companion',
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      for (final point in _waterPoints)
+                        Marker(
+                          point: point.point,
+                          width: 54,
+                          height: 54,
+                          alignment: Alignment.center,
+                          child: _WaterMarker(
+                            point: point,
+                            selected: point == _selectedPoint,
+                            onTap: () => _showPointDetails(point),
+                          ),
+                        ),
+                      if (_detailPoint case final detailPoint?)
+                        Marker(
+                          point: detailPoint.point,
+                          width: 332,
+                          height: 220,
+                          alignment: Alignment.centerRight,
+                          child: _WaterPointMarkerDetail(
+                            point: detailPoint,
+                            visible: _isDetailVisible,
+                          ),
+                        ),
+                    ],
+                  ),
+                  RichAttributionWidget(
+                    attributions: [
+                      TextSourceAttribution(
+                        'OpenStreetMap contributors, CARTO',
+                        prependCopyright: true,
                       ),
-                    ),
-                  if (_detailPoint case final detailPoint?)
-                    Marker(
-                      point: detailPoint.point,
-                      width: 332,
-                      height: 178,
-                      alignment: Alignment.centerRight,
-                      child: _WaterPointMarkerDetail(
-                        point: detailPoint,
-                        visible: _isDetailVisible,
-                      ),
-                    ),
-                ],
-              ),
-              RichAttributionWidget(
-                attributions: [
-                  TextSourceAttribution(
-                    'OpenStreetMap contributors, CARTO',
-                    prependCopyright: true,
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-        const Positioned(
-          left: -1,
-          right: -1,
-          bottom: 0,
-          height: 139,
-          child: _BottomNavGradient(),
-        ),
-        Positioned(
-          left: AppSpacing.pageHorizontal,
-          right: AppSpacing.pageHorizontal,
-          top: 60,
-          child: const MapSearchBar(),
-        ),
-      ],
+            ),
+            const Positioned(
+              left: -1,
+              right: -1,
+              bottom: 0,
+              height: 139,
+              child: _BottomNavGradient(),
+            ),
+            Positioned(
+              left: horizontalPadding,
+              right: horizontalPadding,
+              top: 60,
+              child: const MapSearchBar(),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -251,36 +208,86 @@ class WaterPoint {
     required this.id,
     required this.name,
     required this.regionCode,
+    required this.specificLocation,
     required this.point,
     required this.score,
     required this.tds,
     required this.ph,
+    required this.temperatureCelsius,
+    required this.cr6MgPerL,
     required this.status,
     required this.drinkingAdvice,
     required this.lastTested,
+    required this.reports,
   });
+
+  factory WaterPoint.fromReport(
+    WaterTestReport report, {
+    required List<WaterTestReport> reports,
+  }) {
+    final status = WaterStatus.fromScore(report.score);
+
+    return WaterPoint(
+      id: report.locationId,
+      name: report.locationName,
+      regionCode: report.regionCode,
+      specificLocation: report.specificLocation,
+      point: LatLng(report.latitude, report.longitude),
+      score: report.score,
+      tds: report.tds,
+      ph: report.ph,
+      temperatureCelsius: report.temperatureCelsius,
+      cr6MgPerL: report.cr6MgPerL,
+      status: status,
+      drinkingAdvice: status.drinkingAdvice,
+      lastTested: report.testedAtLabel,
+      reports: reports,
+    );
+  }
 
   final String id;
   final String name;
   final String regionCode;
+  final String specificLocation;
   final LatLng point;
   final int score;
   final int tds;
   final double ph;
+  final double temperatureCelsius;
+  final double cr6MgPerL;
   final WaterStatus status;
   final String drinkingAdvice;
   final String lastTested;
+  final List<WaterTestReport> reports;
+
+  int get reportCount => reports.length;
 }
 
 enum WaterStatus {
-  safe('Safe', Color(0xFF27B96D)),
-  uncertain('Uncertain', Color(0xFFF0A323)),
-  unsafe('Unsafe', Color(0xFFE84C4F));
+  safe('Safe', AppColors.waterQualitySafe),
+  uncertain('Uncertain', AppColors.waterQualityCaution),
+  unsafe('Unsafe', AppColors.waterQualityUnsafe);
 
   const WaterStatus(this.label, this.color);
 
   final String label;
   final Color color;
+
+  static WaterStatus fromScore(int score) {
+    if (score >= 80) {
+      return WaterStatus.safe;
+    }
+    if (score >= 55) {
+      return WaterStatus.uncertain;
+    }
+    return WaterStatus.unsafe;
+  }
+
+  String get drinkingAdvice => switch (this) {
+        WaterStatus.safe => 'Good for drinking after a quick flush',
+        WaterStatus.uncertain => 'Filter before drinking from this source',
+        WaterStatus.unsafe => 'Avoid drinking until the next test clears',
+      };
 }
 
 class _WaterMarker extends StatelessWidget {
@@ -303,7 +310,7 @@ class _WaterMarker extends StatelessWidget {
       onTap: onTap,
       child: Center(
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: _MapPageState._detailFadeDuration,
           width: markerSize,
           height: markerSize,
           decoration: BoxDecoration(
@@ -336,7 +343,7 @@ class _WaterPointCard extends StatelessWidget {
     return IgnorePointer(
       ignoring: waterPoint == null,
       child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 180),
+        duration: _MapPageState._detailFadeDuration,
         opacity: waterPoint == null ? 0 : 1,
         child: PebbleGlassCard(
           blurSigma: 46.25,
@@ -344,7 +351,7 @@ class _WaterPointCard extends StatelessWidget {
           borderRadius: const BorderRadius.all(Radius.circular(AppRadius.card)),
           padding: EdgeInsets.zero,
           child: waterPoint == null
-              ? const SizedBox(width: 262, height: 158)
+              ? const SizedBox(width: 262, height: 187)
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -379,7 +386,7 @@ class _WaterPointMarkerDetail extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(width: 50),
+            const SizedBox(width: 42),
             _WaterPointCard(point: point),
           ],
         ),
@@ -499,44 +506,89 @@ class _PlaceInfoBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 262,
-      height: 94,
+      height: 123,
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.sm,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 147,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      point.drinkingAdvice,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        height: 1.15,
-                        color: AppColors.textPrimary,
-                      ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 70,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            point.specificLocation,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              height: 1.1,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          'Last: ${point.lastTested} - ${point.reportCount} tests',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            height: 1,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Text(
-                    'Last time: ${point.lastTested}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      height: 1,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                _RatingContainer(score: point.score),
+              ],
             ),
-            _RatingContainer(score: point.score),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _ReportMetric(
+                    label: 'TDS',
+                    value: '${point.tds}',
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: _ReportMetric(
+                    label: 'pH',
+                    value: point.ph.toStringAsFixed(1),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: _ReportMetric(
+                    label: 'Temp C',
+                    value: point.temperatureCelsius.toStringAsFixed(1),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: _ReportMetric(
+                    label: 'Cr6+ mg/L',
+                    value: point.cr6MgPerL.toStringAsFixed(4),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -544,7 +596,60 @@ class _PlaceInfoBody extends StatelessWidget {
   }
 }
 
-class _RatingContainer extends StatelessWidget {
+class _ReportMetric extends StatelessWidget {
+  const _ReportMetric({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.limeSoft.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 6,
+                fontWeight: FontWeight.w700,
+                height: 1,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RatingContainer extends StatefulWidget {
   const _RatingContainer({
     required this.score,
   });
@@ -552,32 +657,86 @@ class _RatingContainer extends StatelessWidget {
   final int score;
 
   @override
+  State<_RatingContainer> createState() => _RatingContainerState();
+}
+
+class _RatingContainerState extends State<_RatingContainer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late Animation<double> _progressAnimation;
+  double _targetProgress = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _targetProgress = _normalizedScore(widget.score);
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _progressAnimation = _buildAnimation();
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RatingContainer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextProgress = _normalizedScore(widget.score);
+    if (nextProgress != _targetProgress) {
+      _targetProgress = nextProgress;
+      _progressAnimation = _buildAnimation();
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  double _normalizedScore(int score) => score.clamp(0, 100).toDouble() / 100;
+
+  Animation<double> _buildAnimation() {
+    return CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ).drive(Tween<double>(begin: 0, end: _targetProgress));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final normalizedScore = score.clamp(0, 100) / 100;
+    final progressColor = AppColors.waterQualityScoreColor(widget.score);
 
     return SizedBox(
       width: 70,
       height: 70,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CustomPaint(
-            size: const Size.square(70),
-            painter: _RatingEllipsePainter(
-              progress: normalizedScore,
-              color: AppColors.lime,
-            ),
+      child: AnimatedBuilder(
+        animation: _progressAnimation,
+        builder: (context, child) {
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              CustomPaint(
+                size: const Size.square(70),
+                painter: _RatingEllipsePainter(
+                  progress: _progressAnimation.value,
+                  color: progressColor,
+                ),
+              ),
+              child!,
+            ],
+          );
+        },
+        child: Text(
+          '${widget.score}',
+          maxLines: 1,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
           ),
-          Text(
-            '$score',
-            maxLines: 1,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -599,7 +758,7 @@ class _RatingEllipsePainter extends CustomPainter {
     final rect = Offset.zero & size;
     final strokeWidth = size.width * 0.14;
     final basePaint = Paint()
-      ..color = AppColors.ringTrack
+      ..color = color.withValues(alpha: 0.18)
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;

@@ -7,13 +7,31 @@ import '../models/water_test_report.dart';
 import '../services/water_quality_reports_api.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
-import '../theme/app_shadows.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 import '../theme/responsive_layout.dart';
 import '../widgets/pebble_glass_card.dart';
 import '../widgets/pill_chip.dart';
 import '../widgets/progress_ring.dart';
+
+const _figmaDatePickerDropShadow = <BoxShadow>[
+  BoxShadow(
+    color: Color(0x1A4C7C09),
+    blurRadius: 5,
+    offset: Offset.zero,
+  ),
+];
+
+const _figmaCalendarDropShadow = <BoxShadow>[
+  BoxShadow(
+    color: Color(0x3D000000),
+    blurRadius: 12.4,
+    offset: Offset.zero,
+  ),
+];
+
+const _dropdownMenuFill = Color(0xCCFFFFFF);
+const _uiTransitionDuration = Duration(milliseconds: 500);
 
 class WaterQualityPage extends StatefulWidget {
   WaterQualityPage({
@@ -548,8 +566,8 @@ class _WaterQualityDatePickerState extends State<_WaterQualityDatePicker>
     _visibleMonth = _monthStart(widget.selectedReport.testedAt);
     _menuController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
-      reverseDuration: const Duration(milliseconds: 500),
+      duration: _uiTransitionDuration,
+      reverseDuration: _uiTransitionDuration,
     );
     _menuAnimation = CurvedAnimation(
       parent: _menuController,
@@ -799,9 +817,9 @@ class _CalendarPanel extends StatelessWidget {
     final rows = _calendarRows();
 
     return PebbleGlassCard(
-      color: AppColors.white.withValues(alpha: 0.8),
+      color: _dropdownMenuFill,
       blurSigma: 18,
-      boxShadow: AppShadows.card,
+      boxShadow: _figmaCalendarDropShadow,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -995,7 +1013,7 @@ class _CalendarDayCell extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           AnimatedOpacity(
-            duration: const Duration(milliseconds: 500),
+            duration: _uiTransitionDuration,
             opacity: selected ? 1 : 0,
             child: Container(
               width: 44,
@@ -1046,7 +1064,7 @@ class _DatePill extends StatelessWidget {
     final shadow = [
       BoxShadow(
         color: Color.lerp(
-          AppShadows.card.first.color,
+          _figmaDatePickerDropShadow.first.color,
           const Color(0x26073433),
           progress,
         )!,
@@ -1061,7 +1079,7 @@ class _DatePill extends StatelessWidget {
         scale: ui.lerpDouble(1, 1.015, progress)!,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.white.withValues(alpha: 0.8),
+            color: _dropdownMenuFill,
             borderRadius: borderRadius,
             boxShadow: shadow,
           ),
@@ -1145,8 +1163,8 @@ class _WaterQualityFilterDropdownState<T>
     super.initState();
     _menuController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
-      reverseDuration: const Duration(milliseconds: 500),
+      duration: _uiTransitionDuration,
+      reverseDuration: _uiTransitionDuration,
     );
     _menuAnimation = CurvedAnimation(
       parent: _menuController,
@@ -1267,7 +1285,7 @@ class _WaterQualityFilterDropdownState<T>
           expanded: _isOpen,
           child: AnimatedOpacity(
             opacity: _isOpen ? 0 : 1,
-            duration: const Duration(milliseconds: 500),
+            duration: _uiTransitionDuration,
             curve: Curves.easeOutCubic,
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: widget.maxWidth),

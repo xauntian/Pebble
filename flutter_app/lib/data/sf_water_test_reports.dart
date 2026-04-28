@@ -21,6 +21,22 @@ class SfWaterTestReports {
       cr6MgPerL: 0.0009,
     ),
     WaterTestReport(
+      id: 'animal-park-2026-04-18-122020',
+      locationId: 'animal-park',
+      locationName: 'Animal Park',
+      specificLocation:
+          'Bison Paddock tap, John F Kennedy Dr, Golden Gate Park, San Francisco',
+      latitude: 37.7694,
+      longitude: -122.4862,
+      testedAtIso8601: '2026-04-18T12:20:20-07:00',
+      testedAtLabel: 'Apr 18, 2026',
+      score: 66,
+      tds: 75,
+      ph: 7.05,
+      temperatureCelsius: 25,
+      cr6MgPerL: 0.15,
+    ),
+    WaterTestReport(
       id: 'animal-park-2026-03-21',
       locationId: 'animal-park',
       locationName: 'Animal Park',

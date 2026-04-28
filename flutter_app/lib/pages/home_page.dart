@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../data/demo_device_connection.dart';
 import '../models/app_snapshot.dart';
+import '../models/device_connection.dart';
 import '../models/water_test_report.dart';
+import '../services/pebble_bluetooth_connection_service.dart';
 import '../services/water_quality_reports_api.dart';
 import '../theme/app_spacing.dart';
 import '../theme/responsive_layout.dart';
@@ -25,8 +27,49 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late final Future<List<WaterTestReport>> _reportsFuture =
-      WaterQualityReportsApi.shared.fetchReports();
+  late Future<List<WaterTestReport>> _reportsFuture;
+  final PebbleBluetoothConnectionService _deviceConnectionService =
+      PebbleBluetoothConnectionService.shared;
+  late final StreamSubscription<DeviceConnection> _deviceConnectionSubscription;
+  late final StreamSubscription<List<WaterTestReport>> _reportsSubscription;
+  DeviceConnection _deviceConnection = const DeviceConnection.unconnected();
+  bool _isConnectingDevice = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reportsFuture = WaterQualityReportsApi.shared.fetchReports();
+    _reportsSubscription =
+        WaterQualityReportsApi.shared.reportsChanged.listen((reports) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _reportsFuture = Future<List<WaterTestReport>>.value(reports);
+      });
+    });
+    _deviceConnectionSubscription =
+        _deviceConnectionService.watchConnection().listen((connection) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _deviceConnection = connection;
+        if (connection.isConnected) {
+          _isConnectingDevice = false;
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _reportsSubscription.cancel();
+    _deviceConnectionSubscription.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,11 +93,13 @@ class _HomePageState extends State<HomePage> {
           reports: reports,
           monthlyGoal: widget.snapshot.monthlyGoal,
         );
-        final deviceStatusData = DeviceStatusCardData.fromConnection(
-          DemoDeviceConnection.current,
-        );
         final waterQualityData = WaterQualityCardData.fromReports(
           reports,
+        );
+
+        final deviceStatusData = DeviceStatusCardData.fromConnection(
+          _deviceConnection,
+          isConnecting: _isConnectingDevice,
         );
 
         return LayoutBuilder(
@@ -91,27 +136,29 @@ class _HomePageState extends State<HomePage> {
                   Align(
                     child: SizedBox(
                       width: cardContainerWidth,
-                      child: Wrap(
+                      child: _MasonryCardGrid(
+                        columnCount: columnCount,
+                        cardWidth: cardWidth,
                         spacing: cardGap,
-                        runSpacing: cardGap,
-                        children: [
-                          SizedBox(
-                            width: cardWidth,
+                        items: [
+                          _MasonryCardItem(
                             height: 260,
-                            child: AverageTestsCard(data: averageTestsData),
+                            child: AverageTestsCard(
+                              data: averageTestsData,
+                            ),
                           ),
-                          SizedBox(
-                            width: cardWidth,
-                            height: 233,
-                            child: DeviceStatusCard(data: deviceStatusData),
+                          _MasonryCardItem(
+                            height: 218,
+                            child: DeviceStatusCard(
+                              data: deviceStatusData,
+                              onConnect: _connectPebbleDevice,
+                            ),
                           ),
-                          SizedBox(
-                            width: cardWidth,
+                          _MasonryCardItem(
                             height: 196 + compactHeightExtra,
                             child: TestLifeCard(snapshot: widget.snapshot),
                           ),
-                          SizedBox(
-                            width: cardWidth,
+                          _MasonryCardItem(
                             height: 196 + compactHeightExtra,
                             child: WaterQualityCard(
                               data: waterQualityData,
@@ -148,6 +195,26 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _connectPebbleDevice() async {
+    if (_isConnectingDevice || _deviceConnection.isConnected) {
+      return;
+    }
+
+    setState(() {
+      _isConnectingDevice = true;
+    });
+
+    final connection = await _deviceConnectionService.connectToPebble();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _deviceConnection = connection;
+      _isConnectingDevice = false;
+    });
+  }
+
   void _openWaterQualityPage(
     BuildContext context,
     WaterQualityCardSelection selection,
@@ -164,4 +231,68 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+}
+
+class _MasonryCardGrid extends StatelessWidget {
+  const _MasonryCardGrid({
+    required this.items,
+    required this.columnCount,
+    required this.cardWidth,
+    required this.spacing,
+  });
+
+  final List<_MasonryCardItem> items;
+  final int columnCount;
+  final double cardWidth;
+  final double spacing;
+
+  @override
+  Widget build(BuildContext context) {
+    final columns = List.generate(
+      columnCount,
+      (_) => <_MasonryCardItem>[],
+      growable: false,
+    );
+    for (var index = 0; index < items.length; index++) {
+      columns[index % columnCount].add(items[index]);
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var columnIndex = 0;
+            columnIndex < columns.length;
+            columnIndex++) ...[
+          if (columnIndex > 0) SizedBox(width: spacing),
+          SizedBox(
+            width: cardWidth,
+            child: Column(
+              children: [
+                for (var itemIndex = 0;
+                    itemIndex < columns[columnIndex].length;
+                    itemIndex++) ...[
+                  if (itemIndex > 0) SizedBox(height: spacing),
+                  SizedBox(
+                    width: cardWidth,
+                    height: columns[columnIndex][itemIndex].height,
+                    child: columns[columnIndex][itemIndex].child,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MasonryCardItem {
+  const _MasonryCardItem({
+    required this.height,
+    required this.child,
+  });
+
+  final double height;
+  final Widget child;
 }

@@ -37,8 +37,9 @@ class LocalAskAiResponder implements AskAiResponder {
   @override
   Future<AiSearchResponse> ask(AiSearchRequest request) async {
     final prompt = request.prompt.trim();
-    final answer =
-        _answers[prompt.toLowerCase()] ?? 'Waiting for API integration.';
+    final answer = request.source == AiSearchSource.voice
+        ? 'Waiting for API integration.'
+        : _answers[prompt.toLowerCase()] ?? 'Waiting for API integration.';
 
     return AiSearchResponse(prompt: prompt, answer: answer);
   }

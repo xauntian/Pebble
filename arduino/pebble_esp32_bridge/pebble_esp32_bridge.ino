@@ -5,14 +5,15 @@
 #include <BLEUtils.h>
 
 // Pebble ESP32 BLE bridge.
-// Sends the remaining battery value as a string field named battery_number.
+// Advertises the Pebble service consumed by the Flutter Bluetooth client.
+// Sends JSON fields named battery_number and tds_number.
 
-static const char* DEVICE_NAME = "Pebble-ESP32";
+static const char* DEVICE_NAME = "Pebble TestKit";
 
 // Custom Pebble BLE service and characteristic UUIDs.
 // Keep these values in sync with the Flutter Bluetooth client.
 static const char* PEBBLE_SERVICE_UUID = "7b7d0001-4f8a-4c28-9f2a-6f0a8f0d1000";
-static const char* BATTERY_NUMBER_UUID = "7b7d0002-4f8a-4c28-9f2a-6f0a8f0d1000";
+static const char* PEBBLE_PAYLOAD_UUID = "7b7d0002-4f8a-4c28-9f2a-6f0a8f0d1000";
 
 // TDS sensor analog output pin.
 // ESP32 ADC input-only pins like GPIO34 are a good default for analog sensors.
@@ -39,7 +40,7 @@ static const int TDS_SENSOR_MAX = 1000;
 static const uint8_t MIN_STATUS_SATURATION = 80;
 static const uint8_t MAX_STATUS_SATURATION = 255;
 
-BLECharacteristic* batteryNumberCharacteristic = nullptr;
+BLECharacteristic* pebblePayloadCharacteristic = nullptr;
 Adafruit_NeoPixel ledRing(LED_RING_COUNT, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
 bool deviceConnected = false;
 String battery_number = "85";
@@ -47,9 +48,12 @@ String tds_number = "0";
 unsigned long lastNotifyAt = 0;
 unsigned long lastTdsReadAt = 0;
 
+void publishBatteryOnlyPayload();
+
 class PebbleServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
     deviceConnected = true;
+    publishBatteryOnlyPayload();
   }
 
   void onDisconnect(BLEServer* server) override {
@@ -74,17 +78,30 @@ String batteryPayload() {
   return "{\"battery_number\":\"" + battery_number + "\",\"tds_number\":\"" + tds_number + "\"}";
 }
 
-void publishBatteryNumber() {
-  if (batteryNumberCharacteristic == nullptr) {
+String batteryOnlyPayload() {
+  return "{\"battery_number\":\"" + battery_number + "\"}";
+}
+
+void publishPayload(String payload) {
+  if (pebblePayloadCharacteristic == nullptr) {
     return;
   }
 
-  String payload = batteryPayload();
-  batteryNumberCharacteristic->setValue(payload.c_str());
+  pebblePayloadCharacteristic->setValue(payload.c_str());
 
   if (deviceConnected) {
-    batteryNumberCharacteristic->notify();
+    pebblePayloadCharacteristic->notify();
   }
+}
+
+void publishBatteryOnlyPayload() {
+  publishPayload(batteryOnlyPayload());
+  Serial.print("Sent battery log to app: ");
+  Serial.println(batteryOnlyPayload());
+}
+
+void publishBatteryNumber() {
+  publishPayload(batteryPayload());
 }
 
 void updateBatteryNumber(String nextValue) {
@@ -212,11 +229,11 @@ void setupBle() {
 
   BLEService* pebbleService = server->createService(PEBBLE_SERVICE_UUID);
 
-  batteryNumberCharacteristic = pebbleService->createCharacteristic(
-    BATTERY_NUMBER_UUID,
+  pebblePayloadCharacteristic = pebbleService->createCharacteristic(
+    PEBBLE_PAYLOAD_UUID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
   );
-  batteryNumberCharacteristic->addDescriptor(new BLE2902());
+  pebblePayloadCharacteristic->addDescriptor(new BLE2902());
 
   pebbleService->start();
 
@@ -244,7 +261,12 @@ void setup() {
   showWaterQualityOnLedRing(tds_number.toInt());
 
   Serial.println("Pebble ESP32 BLE bridge started.");
-  Serial.println("BLE is advertising as Pebble-ESP32.");
+  Serial.print("BLE is advertising as ");
+  Serial.println(DEVICE_NAME);
+  Serial.print("Pebble service UUID: ");
+  Serial.println(PEBBLE_SERVICE_UUID);
+  Serial.print("Payload characteristic UUID: ");
+  Serial.println(PEBBLE_PAYLOAD_UUID);
   Serial.println("No PIN or password is required. Confirm the connection prompt if Android shows one.");
   Serial.println("Send a battery value through Serial, for example:");
   Serial.println("battery_number=85");

@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../data/sf_water_test_reports.dart';
@@ -11,6 +13,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_text_styles.dart';
 import '../theme/responsive_layout.dart';
 import '../widgets/map_search_bar.dart';
 import '../widgets/pebble_glass_card.dart';
@@ -34,11 +37,16 @@ class _MapPageState extends State<MapPage> {
   static const _detailFadeDuration = Duration(milliseconds: 500);
 
   final MapController _mapController = MapController();
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  Timer? _detailHideTimer;
   WaterPoint? _selectedPoint;
   WaterPoint? _detailPoint;
   bool _isDetailVisible = false;
+  bool _isSearchExpanded = false;
+  String _searchQuery = '';
 
-  static final List<WaterPoint> _waterPoints =
+  static final List<WaterPoint> _testedWaterPoints =
       SfWaterTestReports.latestByLocation()
           .map(
             (report) => WaterPoint.fromReport(
@@ -48,13 +56,156 @@ class _MapPageState extends State<MapPage> {
           )
           .toList(growable: false);
 
+  static final List<WaterPoint> _waterPoints = [
+    ..._testedWaterPoints,
+    ..._possiblePublicDrinkPoints.where(
+      (candidate) =>
+          !_testedWaterPoints.any((point) => point.id == candidate.id),
+    ),
+  ];
+
+  static const List<WaterPoint> _possiblePublicDrinkPoints = [
+    WaterPoint.possiblePublicDrink(
+      id: 'civic-center-plaza-fountain',
+      name: 'Civic Center Plaza',
+      regionCode: 'SF, CA',
+      specificLocation:
+          'Possible public drinking fountain near Civic Center Plaza',
+      point: LatLng(37.7793, -122.4175),
+    ),
+    WaterPoint.possiblePublicDrink(
+      id: 'dolores-park-fountain',
+      name: 'Dolores Park',
+      regionCode: 'SF, CA',
+      specificLocation: 'Possible public drinking fountain inside Dolores Park',
+      point: LatLng(37.7596, -122.4269),
+    ),
+    WaterPoint.possiblePublicDrink(
+      id: 'golden-gate-park-conservatory',
+      name: 'Golden Gate Park',
+      regionCode: 'SF, CA',
+      specificLocation:
+          'Possible public drinking fountain near Conservatory of Flowers',
+      point: LatLng(37.7726, -122.4602),
+    ),
+    WaterPoint.possiblePublicDrink(
+      id: 'crissy-field-east-beach',
+      name: 'Crissy Field East Beach',
+      regionCode: 'SF, CA',
+      specificLocation:
+          'Possible public drinking fountain near the East Beach promenade',
+      point: LatLng(37.8044, -122.4514),
+    ),
+    WaterPoint.possiblePublicDrink(
+      id: 'union-square-plaza',
+      name: 'Union Square Plaza',
+      regionCode: 'SF, CA',
+      specificLocation: 'Possible public drinking fountain near Union Square',
+      point: LatLng(37.788, -122.4074),
+    ),
+    WaterPoint.possiblePublicDrink(
+      id: 'pier-7-promenade',
+      name: 'Pier 7 Promenade',
+      regionCode: 'SF, CA',
+      specificLocation: 'Possible public drinking fountain near Pier 7',
+      point: LatLng(37.7982, -122.3959),
+    ),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _searchFocusNode.addListener(_handleSearchFocusChanged);
+  }
+
   @override
   void dispose() {
+    _detailHideTimer?.cancel();
+    _searchFocusNode
+      ..removeListener(_handleSearchFocusChanged)
+      ..dispose();
+    _searchController.dispose();
     _mapController.dispose();
     super.dispose();
   }
 
+  void _handleSearchFocusChanged() {
+    if (mounted) {
+      setState(() {
+        if (!_searchFocusNode.hasFocus && _searchQuery.trim().isEmpty) {
+          _isSearchExpanded = false;
+        }
+      });
+    }
+  }
+
+  bool get _isSearchActive =>
+      _isSearchExpanded ||
+      _searchFocusNode.hasFocus ||
+      _searchQuery.trim().isNotEmpty;
+
+  List<WaterPoint> get _visibleWaterPoints {
+    final query = _searchQuery.trim();
+    if (query.isEmpty) {
+      return _waterPoints;
+    }
+
+    return _waterPoints
+        .where((point) => _matchesWaterPoint(point, query))
+        .toList(growable: false);
+  }
+
+  List<WaterPoint> get _searchResults {
+    final query = _searchQuery.trim();
+    if (query.isEmpty) {
+      return const [];
+    }
+
+    return _visibleWaterPoints.take(6).toList(growable: false);
+  }
+
+  void _activateSearch() {
+    setState(() => _isSearchExpanded = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _updateSearchQuery(String value) {
+    final shouldHideDetails = _selectedPoint != null && value.trim().isNotEmpty;
+    setState(() {
+      _isSearchExpanded = true;
+      _searchQuery = value;
+    });
+    if (shouldHideDetails) {
+      _hidePointDetails();
+    }
+  }
+
+  void _submitSearch() {
+    if (_searchQuery.trim().isEmpty) {
+      _activateSearch();
+      return;
+    }
+
+    final results = _searchResults;
+    if (results.isNotEmpty) {
+      _selectSearchResult(results.first);
+    }
+  }
+
+  void _selectSearchResult(WaterPoint point) {
+    _searchController.text = point.name;
+    _searchQuery = point.name;
+    _isSearchExpanded = true;
+    _searchFocusNode.unfocus();
+    _showPointDetails(point);
+  }
+
   void _showPointDetails(WaterPoint point) {
+    _detailHideTimer?.cancel();
     setState(() {
       _selectedPoint = point;
       _detailPoint = point;
@@ -80,7 +231,9 @@ class _MapPageState extends State<MapPage> {
       _isDetailVisible = false;
     });
 
-    Future<void>.delayed(_detailFadeDuration, () {
+    _detailHideTimer?.cancel();
+    _detailHideTimer = Timer(_detailFadeDuration, () {
+      _detailHideTimer = null;
       if (!mounted || _isDetailVisible) {
         return;
       }
@@ -89,12 +242,63 @@ class _MapPageState extends State<MapPage> {
     });
   }
 
+  bool _matchesWaterPoint(WaterPoint point, String rawQuery) {
+    final tokens = rawQuery
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((token) => token.trim().isNotEmpty)
+        .map(_normalizeSearchText)
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+    if (tokens.isEmpty) {
+      return true;
+    }
+
+    final searchableFields = [
+      point.name,
+      point.regionCode,
+      point.specificLocation,
+      point.status.label,
+      if (!point.hasTestData) 'public drink drinking fountain no data',
+    ].map(_normalizeSearchText).toList(growable: false);
+
+    return tokens.every(
+      (token) => searchableFields.any(
+        (field) => field.contains(token) || _isSubsequence(token, field),
+      ),
+    );
+  }
+
+  String _normalizeSearchText(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  }
+
+  bool _isSubsequence(String needle, String haystack) {
+    if (needle.isEmpty) {
+      return true;
+    }
+
+    var needleIndex = 0;
+    for (final codeUnit in haystack.codeUnits) {
+      if (codeUnit == needle.codeUnitAt(needleIndex)) {
+        needleIndex++;
+        if (needleIndex == needle.length) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding =
             ResponsiveLayout.horizontalPadding(constraints.maxWidth);
+        final visibleWaterPoints = _visibleWaterPoints;
+        final searchResults = _searchResults;
 
         return Stack(
           children: [
@@ -126,7 +330,7 @@ class _MapPageState extends State<MapPage> {
                   ),
                   MarkerLayer(
                     markers: [
-                      for (final point in _waterPoints)
+                      for (final point in visibleWaterPoints)
                         Marker(
                           point: point.point,
                           width: 54,
@@ -173,8 +377,25 @@ class _MapPageState extends State<MapPage> {
               left: horizontalPadding,
               right: horizontalPadding,
               top: 60,
-              child: const MapSearchBar(),
+              child: MapSearchBar(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                active: _isSearchActive,
+                onActivate: _activateSearch,
+                onChanged: _updateSearchQuery,
+                onSearch: _submitSearch,
+              ),
             ),
+            if (_isSearchActive && _searchQuery.trim().isNotEmpty)
+              Positioned(
+                left: horizontalPadding,
+                right: horizontalPadding,
+                top: 112,
+                child: _MapSearchResultsPanel(
+                  results: searchResults,
+                  onSelected: _selectSearchResult,
+                ),
+              ),
           ],
         );
       },
@@ -203,6 +424,115 @@ class _BottomNavGradient extends StatelessWidget {
   }
 }
 
+class _MapSearchResultsPanel extends StatelessWidget {
+  const _MapSearchResultsPanel({
+    required this.results,
+    required this.onSelected,
+  });
+
+  final List<WaterPoint> results;
+  final ValueChanged<WaterPoint> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PebbleGlassCard(
+      blurSigma: 12,
+      color: AppColors.glass,
+      boxShadow: AppShadows.card,
+      borderRadius: const BorderRadius.all(Radius.circular(18)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: results.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Text(
+                'No drinking points found',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textHint,
+                ),
+              ),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final point in results)
+                  _MapSearchResultTile(
+                    point: point,
+                    onTap: () => onSelected(point),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class _MapSearchResultTile extends StatelessWidget {
+  const _MapSearchResultTile({
+    required this.point,
+    required this.onTap,
+  });
+
+  final WaterPoint point;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Select ${point.name}',
+      child: GestureDetector(
+        key: ValueKey('map-search-result-${point.id}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+          child: Row(
+            children: [
+              _WaterPointGlyph(
+                size: 22,
+                color: point.markerColor,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      point.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.bodyBold,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      point.specificLocation,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.labelMedium.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                point.hasTestData ? '${point.score}' : 'No data',
+                maxLines: 1,
+                style: TextStyle(
+                  fontFamily: AppTextStyles.fontFamily,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: point.markerColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class WaterPoint {
   const WaterPoint({
     required this.id,
@@ -210,6 +540,7 @@ class WaterPoint {
     required this.regionCode,
     required this.specificLocation,
     required this.point,
+    required this.hasTestData,
     required this.score,
     required this.tds,
     required this.ph,
@@ -220,6 +551,24 @@ class WaterPoint {
     required this.lastTested,
     required this.reports,
   });
+
+  const WaterPoint.possiblePublicDrink({
+    required this.id,
+    required this.name,
+    required this.regionCode,
+    required this.specificLocation,
+    required this.point,
+  })  : hasTestData = false,
+        score = 0,
+        tds = 0,
+        ph = 0,
+        temperatureCelsius = 0,
+        cr6MgPerL = 0,
+        status = WaterStatus.untested,
+        drinkingAdvice =
+            'Possible public drinking point. Test before drinking.',
+        lastTested = 'No test data',
+        reports = const [];
 
   factory WaterPoint.fromReport(
     WaterTestReport report, {
@@ -233,6 +582,7 @@ class WaterPoint {
       regionCode: report.regionCode,
       specificLocation: report.specificLocation,
       point: LatLng(report.latitude, report.longitude),
+      hasTestData: true,
       score: report.score,
       tds: report.tds,
       ph: report.ph,
@@ -250,6 +600,7 @@ class WaterPoint {
   final String regionCode;
   final String specificLocation;
   final LatLng point;
+  final bool hasTestData;
   final int score;
   final int tds;
   final double ph;
@@ -261,17 +612,27 @@ class WaterPoint {
   final List<WaterTestReport> reports;
 
   int get reportCount => reports.length;
+
+  Color get markerColor => status.markerColor;
 }
 
 enum WaterStatus {
   safe('Safe', AppColors.waterQualitySafe),
   uncertain('Uncertain', AppColors.waterQualityCaution),
-  unsafe('Unsafe', AppColors.waterQualityUnsafe);
+  unsafe('Unsafe', AppColors.waterQualityUnsafe),
+  untested('No data', AppColors.textMuted);
 
   const WaterStatus(this.label, this.color);
 
   final String label;
   final Color color;
+
+  Color get markerColor => switch (this) {
+        WaterStatus.safe => const Color(0xFF6EDB1A),
+        WaterStatus.uncertain => AppColors.waterQualityCaution,
+        WaterStatus.unsafe => AppColors.waterQualityUnsafe,
+        WaterStatus.untested => AppColors.textMuted,
+      };
 
   static WaterStatus fromScore(int score) {
     if (score >= 80) {
@@ -287,6 +648,8 @@ enum WaterStatus {
         WaterStatus.safe => 'Good for drinking after a quick flush',
         WaterStatus.uncertain => 'Filter before drinking from this source',
         WaterStatus.unsafe => 'Avoid drinking until the next test clears',
+        WaterStatus.untested =>
+          'Possible public drinking point. Test before drinking.',
       };
 }
 
@@ -303,25 +666,54 @@ class _WaterMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final markerSize = selected ? 46.0 : 38.0;
-
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Center(
-        child: AnimatedContainer(
-          duration: _MapPageState._detailFadeDuration,
-          width: markerSize,
-          height: markerSize,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.94),
-            shape: BoxShape.circle,
-            boxShadow: AppShadows.mapCard,
+      child: Semantics(
+        selected: selected,
+        child: Center(
+          child: AnimatedContainer(
+            duration: _MapPageState._detailFadeDuration,
+            width: 44,
+            height: 44,
+            child: _WaterPointGlyph(
+              size: 44,
+              color: point.markerColor,
+            ),
           ),
-          child: Icon(
-            Icons.water_drop_rounded,
-            size: markerSize * 0.66,
-            color: point.status.color,
+        ),
+      ),
+    );
+  }
+}
+
+class _WaterPointGlyph extends StatelessWidget {
+  const _WaterPointGlyph({
+    required this.color,
+    required this.size,
+  });
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconWidth = size * 18 / 44;
+    final iconHeight = size * 24 / 44;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.2),
+        shape: BoxShape.circle,
+      ),
+      child: SizedBox.square(
+        dimension: size,
+        child: Center(
+          child: SvgPicture.asset(
+            'assets/figma/water_point.svg',
+            width: iconWidth,
+            height: iconHeight,
+            colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
           ),
         ),
       ),
@@ -404,6 +796,16 @@ class _PlaceImageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final gradientColors = point.hasTestData
+        ? const [
+            Color(0xFF6DA66A),
+            Color(0xFF244D3F),
+          ]
+        : const [
+            Color(0xFFB8BDB6),
+            Color(0xFF59615C),
+          ];
+
     return SizedBox(
       width: 262,
       height: 64,
@@ -415,15 +817,12 @@ class _PlaceImageHeader extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            const DecoratedBox(
+            DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF6DA66A),
-                    Color(0xFF244D3F),
-                  ],
+                  colors: gradientColors,
                 ),
               ),
             ),
@@ -436,13 +835,12 @@ class _PlaceImageHeader extends StatelessWidget {
                 color: Color(0x33FFFFFF),
               ),
             ),
-            const Positioned(
+            Positioned(
               left: 12,
               top: 8,
-              child: Icon(
-                Icons.water_drop_rounded,
+              child: _WaterPointGlyph(
                 size: 22,
-                color: Color(0x80FFFFFF),
+                color: AppColors.white.withValues(alpha: 0.5),
               ),
             ),
             const DecoratedBox(
@@ -504,6 +902,51 @@ class _PlaceInfoBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!point.hasTestData) {
+      return SizedBox(
+        width: 262,
+        height: 123,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  point.specificLocation,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    height: 1.1,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              _NoDataBadge(label: point.status.label),
+              const SizedBox(height: 8),
+              Text(
+                point.drinkingAdvice,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  height: 1.15,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return SizedBox(
       width: 262,
       height: 123,
@@ -643,6 +1086,37 @@ class _ReportMetric extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoDataBadge extends StatelessWidget {
+  const _NoDataBadge({
+    required this.label,
+  });
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.textMuted.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text(
+          label,
+          maxLines: 1,
+          style: const TextStyle(
+            fontFamily: AppTextStyles.fontFamily,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textMuted,
+          ),
         ),
       ),
     );

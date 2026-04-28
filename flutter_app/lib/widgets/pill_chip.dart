@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -7,7 +9,17 @@ import '../theme/app_text_styles.dart';
 
 const double _dropdownMenuInset = 3;
 const double _dropdownShadowOutset = 20;
+const double _dropdownPillIconSize = 10;
+const double _dropdownPillIconGap = 5;
+const EdgeInsets _dropdownPillPadding = EdgeInsets.fromLTRB(8, 4, 10, 4);
 const _dropdownTransitionDuration = Duration(milliseconds: 500);
+const _dropdownPillTextStyle = TextStyle(
+  fontFamily: AppTextStyles.fontFamily,
+  fontSize: 10,
+  fontWeight: FontWeight.w500,
+  decoration: TextDecoration.none,
+  color: AppColors.textPrimary,
+);
 
 class PillChip extends StatelessWidget {
   const PillChip({
@@ -22,6 +34,7 @@ class PillChip extends StatelessWidget {
     this.borderRadius = AppRadius.round,
     this.height,
     this.labelWidth,
+    this.shrinkLabel = false,
   });
 
   final String label;
@@ -34,9 +47,11 @@ class PillChip extends StatelessWidget {
   final double borderRadius;
   final double? height;
   final double? labelWidth;
+  final bool shrinkLabel;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveTextStyle = textStyle ?? AppTextStyles.chip;
     final content = Padding(
       padding: padding,
       child: Row(
@@ -47,14 +62,30 @@ class PillChip extends StatelessWidget {
             const SizedBox(width: 5),
           ],
           Flexible(
-            child: SizedBox(
-              width: labelWidth,
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textStyle ?? AppTextStyles.chip,
-              ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = labelWidth ?? constraints.maxWidth;
+                final labelText = Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: shrinkLabel
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
+                  style: effectiveTextStyle,
+                );
+
+                return SizedBox(
+                  width: width.isFinite ? width : null,
+                  child: shrinkLabel
+                      ? FittedBox(
+                          alignment: Alignment.centerLeft,
+                          fit: BoxFit.scaleDown,
+                          child: labelText,
+                        )
+                      : labelText,
+                );
+              },
             ),
           ),
           if (trailing != null) ...[
@@ -86,7 +117,7 @@ class DropdownPillChip extends StatelessWidget {
     super.key,
     required this.label,
     this.width,
-    this.labelWidth = 35,
+    this.labelWidth,
     this.showIcon = true,
   });
 
@@ -100,20 +131,14 @@ class DropdownPillChip extends StatelessWidget {
     final chip = PillChip(
       label: label,
       height: 20,
-      padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+      padding: _dropdownPillPadding,
       borderRadius: AppRadius.pill,
       labelWidth: labelWidth,
-      textStyle: const TextStyle(
-        fontFamily: AppTextStyles.fontFamily,
-        fontSize: 10,
-        fontWeight: FontWeight.w500,
-        decoration: TextDecoration.none,
-        color: AppColors.textPrimary,
-      ),
+      textStyle: _dropdownPillTextStyle,
       leading: showIcon
           ? const Icon(
               Icons.keyboard_arrow_down_rounded,
-              size: 10,
+              size: _dropdownPillIconSize,
               color: AppColors.textPrimary,
             )
           : null,
@@ -192,6 +217,7 @@ class _FigmaPillDropdownState<T> extends State<FigmaPillDropdown<T>>
       return;
     }
 
+    final targetRect = _targetRectInOverlay();
     _overlayEntry = OverlayEntry(
       builder: (context) {
         return _FigmaDropdownOverlay<T>(
@@ -200,6 +226,7 @@ class _FigmaPillDropdownState<T> extends State<FigmaPillDropdown<T>>
             -_dropdownShadowOutset - _dropdownMenuInset,
             -_dropdownShadowOutset - _dropdownMenuInset,
           ),
+          targetRect: targetRect,
           animation: _menuAnimation,
           value: widget.value,
           items: widget.items,
@@ -216,6 +243,19 @@ class _FigmaPillDropdownState<T> extends State<FigmaPillDropdown<T>>
     Overlay.of(context).insert(_overlayEntry!);
     setState(() => _isOpen = true);
     _menuController.forward(from: 0);
+  }
+
+  Rect? _targetRectInOverlay() {
+    final targetBox = context.findRenderObject();
+    final overlayBox = Overlay.of(context).context.findRenderObject();
+    if (targetBox is! RenderBox ||
+        overlayBox is! RenderBox ||
+        !targetBox.hasSize) {
+      return null;
+    }
+
+    final topLeft = targetBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    return topLeft & targetBox.size;
   }
 
   void _closeMenu({bool updateState = true}) {
@@ -297,6 +337,7 @@ class _FigmaDropdownOverlay<T> extends StatelessWidget {
   const _FigmaDropdownOverlay({
     required this.layerLink,
     required this.offset,
+    required this.targetRect,
     required this.animation,
     required this.value,
     required this.items,
@@ -305,10 +346,11 @@ class _FigmaDropdownOverlay<T> extends StatelessWidget {
     required this.onDismiss,
   });
 
-  static const double _menuWidth = 96;
+  static const double _minimumMenuWidth = 96;
 
   final LayerLink layerLink;
   final Offset offset;
+  final Rect? targetRect;
   final Animation<double> animation;
   final T value;
   final List<T> items;
@@ -320,6 +362,11 @@ class _FigmaDropdownOverlay<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final availableItems =
         items.where((item) => item != value).toList(growable: false);
+    final menuWidth = _menuWidthFor(context, [
+      value,
+      ...availableItems,
+    ]);
+    final effectiveOffset = _effectiveOffset(context, menuWidth);
 
     return Stack(
       children: [
@@ -333,7 +380,7 @@ class _FigmaDropdownOverlay<T> extends StatelessWidget {
         CompositedTransformFollower(
           link: layerLink,
           showWhenUnlinked: false,
-          offset: offset,
+          offset: effectiveOffset,
           child: FadeTransition(
             opacity: animation,
             child: SizeTransition(
@@ -351,7 +398,7 @@ class _FigmaDropdownOverlay<T> extends StatelessWidget {
                   child: Material(
                     type: MaterialType.transparency,
                     child: SizedBox(
-                      width: _menuWidth,
+                      width: menuWidth,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: AppColors.white.withValues(alpha: 0.8),
@@ -395,6 +442,68 @@ class _FigmaDropdownOverlay<T> extends StatelessWidget {
       ],
     );
   }
+
+  Offset _effectiveOffset(BuildContext context, double menuWidth) {
+    final target = targetRect;
+    if (target == null) {
+      return offset;
+    }
+
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final menuLeft = target.left + offset.dx + _dropdownShadowOutset;
+    var shift = 0.0;
+    final overflowRight = menuLeft + menuWidth - viewportWidth;
+    if (overflowRight > 0) {
+      shift -= overflowRight;
+    }
+    final shiftedLeft = menuLeft + shift;
+    if (shiftedLeft < 0) {
+      shift -= shiftedLeft;
+    }
+
+    return offset.translate(shift, 0);
+  }
+
+  double _menuWidthFor(BuildContext context, List<T> menuItems) {
+    final widestPill = menuItems.fold<double>(_minimumMenuWidth, (
+      maxWidth,
+      item,
+    ) {
+      return math.max(
+        maxWidth,
+        _dropdownPillWidthFor(
+          context,
+          labelFor(item),
+          showIcon: true,
+        ),
+      );
+    });
+    final maxScreenWidth = math.max(
+      _minimumMenuWidth,
+      MediaQuery.sizeOf(context).width - _dropdownShadowOutset * 2,
+    );
+
+    return (widestPill + _dropdownMenuInset * 2)
+        .clamp(_minimumMenuWidth, maxScreenWidth)
+        .toDouble();
+  }
+
+  double _dropdownPillWidthFor(
+    BuildContext context,
+    String label, {
+    required bool showIcon,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: _dropdownPillTextStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+
+    return painter.width +
+        _dropdownPillPadding.horizontal +
+        (showIcon ? _dropdownPillIconSize + _dropdownPillIconGap : 0);
+  }
 }
 
 class _FigmaSelectedDropdownItem<T> extends StatelessWidget {
@@ -413,9 +522,12 @@ class _FigmaSelectedDropdownItem<T> extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => onSelected(value),
-      child: DropdownPillChip(
-        label: label,
-        labelWidth: null,
+      child: SizedBox(
+        width: double.infinity,
+        child: DropdownPillChip(
+          label: label,
+          labelWidth: null,
+        ),
       ),
     );
   }
@@ -448,13 +560,7 @@ class _FigmaDropdownMenuItem<T> extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: AppTextStyles.fontFamily,
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                decoration: TextDecoration.none,
-                color: AppColors.textPrimary,
-              ),
+              style: _dropdownPillTextStyle,
             ),
           ),
         ),

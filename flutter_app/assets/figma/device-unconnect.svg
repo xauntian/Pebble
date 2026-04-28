@@ -1,0 +1,18 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g id="device-unconnect-icon" stroke-linecap="round" stroke-linejoin="round">
+    <g id="device" opacity="0.88">
+      <rect x="31" y="18" width="34" height="60" rx="17" fill="#EEF3EE" stroke="#718080" stroke-width="3"/>
+      <rect x="38" y="27" width="20" height="34" rx="9" fill="#FAFCF8" stroke="#8A9896" stroke-opacity="0.62" stroke-width="2"/>
+      <circle cx="48" cy="69" r="3" fill="#8A9896"/>
+    </g>
+    <g id="signal" opacity="0.48" stroke="#718080" stroke-width="4">
+      <path d="M21 37C16 43 16 53 21 59"/>
+      <path d="M75 37C80 43 80 53 75 59"/>
+      <path d="M25 44C23 47 23 50 25 53"/>
+      <path d="M71 44C73 47 73 50 71 53"/>
+    </g>
+    <g id="disconnect" opacity="0.82" stroke="#9A817E" stroke-width="5">
+      <path d="M26 72L70 28"/>
+    </g>
+  </g>
+</svg>

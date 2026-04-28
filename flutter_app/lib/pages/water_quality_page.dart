@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/water_test_report.dart';
 import '../services/water_quality_reports_api.dart';
@@ -32,12 +34,15 @@ const _figmaCalendarDropShadow = <BoxShadow>[
 
 const _dropdownMenuFill = Color(0xCCFFFFFF);
 const _uiTransitionDuration = Duration(milliseconds: 500);
+const _calendarCellSize = 38.0;
+const _dropdownTextWidthSlack = 10.0;
 
 class WaterQualityPage extends StatefulWidget {
   WaterQualityPage({
     super.key,
     this.initialLocationId,
     this.initialRegionCode,
+    this.initialReportId,
     WaterQualityReportsApi? reportsApi,
   }) : reportsApi = reportsApi ?? WaterQualityReportsApi.shared;
 
@@ -45,6 +50,7 @@ class WaterQualityPage extends StatefulWidget {
 
   final String? initialLocationId;
   final String? initialRegionCode;
+  final String? initialReportId;
   final WaterQualityReportsApi reportsApi;
 
   @override
@@ -52,7 +58,9 @@ class WaterQualityPage extends StatefulWidget {
 }
 
 class _WaterQualityPageState extends State<WaterQualityPage> {
-  late final Future<List<WaterTestReport>> _reportsFuture;
+  late Future<List<WaterTestReport>> _reportsFuture;
+  late final StreamSubscription<WaterTestReport> _generatedReportSubscription;
+  final Set<String> _deletedReportIds = <String>{};
   String? _selectedLocationId;
   String? _selectedRegionCode;
   String? _selectedReportId;
@@ -61,8 +69,29 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
   void initState() {
     super.initState();
     _reportsFuture = widget.reportsApi.fetchReports();
+    _generatedReportSubscription =
+        widget.reportsApi.generatedReports.listen((report) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _deletedReportIds.remove(report.id);
+        _selectedRegionCode = report.regionCode;
+        _selectedLocationId = report.locationId;
+        _selectedReportId = report.id;
+        _reportsFuture = widget.reportsApi.fetchReports();
+      });
+    });
     _selectedLocationId = widget.initialLocationId;
     _selectedRegionCode = widget.initialRegionCode;
+    _selectedReportId = widget.initialReportId;
+  }
+
+  @override
+  void dispose() {
+    _generatedReportSubscription.cancel();
+    super.dispose();
   }
 
   @override
@@ -70,9 +99,9 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
     return FutureBuilder<List<WaterTestReport>>(
       future: _reportsFuture,
       builder: (context, snapshot) {
-        final reports = snapshot.data;
+        final fetchedReports = snapshot.data;
 
-        if (reports == null) {
+        if (fetchedReports == null) {
           return const _WaterQualityPageShell(
             child: Center(
               child: CircularProgressIndicator(
@@ -83,6 +112,9 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
           );
         }
 
+        final reports = fetchedReports
+            .where((report) => !_deletedReportIds.contains(report.id))
+            .toList(growable: false);
         if (reports.isEmpty) {
           return const _WaterQualityPageShell(
             child: Center(
@@ -109,6 +141,10 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
     final selectedLocation = _resolveLocation(locationItems);
     final selectedReports = _reportsForLocation(reports, selectedLocation.id);
     final selectedReport = _resolveReport(selectedReports);
+    final selectedDayReports = _reportsForSelectedDay(
+      selectedReports,
+      selectedReport,
+    );
 
     _selectedRegionCode = selectedRegionCode;
     _selectedLocationId = selectedLocation.id;
@@ -116,7 +152,6 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
 
     return _WaterQualityPageShell(
       selectedReport: selectedReport,
-      selectedRegionCode: selectedRegionCode,
       reports: reports,
       onReportSelected: _selectReport,
       builder: (context, availableHeight, contentWidth) {
@@ -131,6 +166,10 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
           locations: locations,
           selectedReport: selectedReport,
           selectedReports: selectedReports,
+          selectedDayReports: selectedDayReports,
+          onDeleteSelectedReport: () {
+            _deleteReport(selectedReport, reports);
+          },
         );
       },
     );
@@ -147,12 +186,16 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
     required List<_WaterLocationOption> locations,
     required WaterTestReport selectedReport,
     required List<WaterTestReport> selectedReports,
+    required List<WaterTestReport> selectedDayReports,
+    required VoidCallback onDeleteSelectedReport,
   }) {
-    const titleHeight = 24.0;
+    const titleHeight = 32.0;
     const titleGap = AppSpacing.section;
     const minContentCardHeight = 575.0;
     final contentCardHeight = math.max(
-        minContentCardHeight, availableHeight - titleHeight - titleGap);
+      minContentCardHeight,
+      availableHeight - titleHeight - titleGap,
+    );
     final innerContentHeight =
         math.max(0.0, contentCardHeight - AppSpacing.cardPadding * 2);
     final compactness = _compactnessFor(innerContentHeight);
@@ -164,13 +207,25 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
+          width: contentWidth,
           height: titleHeight,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Water quality',
-              style: Theme.of(context).textTheme.headlineLarge,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  'Water quality',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.headlineLarge,
+                ),
+              ),
+              const SizedBox(width: 12),
+              _DeleteReportButton(
+                onTap: onDeleteSelectedReport,
+              ),
+            ],
           ),
         ),
         const SizedBox(height: titleGap),
@@ -184,41 +239,93 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
               child: Column(
                 children: [
                   Align(
-                    alignment: Alignment.centerLeft,
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: AppSpacing.sm,
-                      children: [
-                        _WaterQualityFilterDropdown<_WaterLocationOption>(
-                          value: selectedLocation,
-                          items: locationItems,
-                          labelFor: (location) => location.name,
-                          maxWidth: 150,
-                          onSelected: (location) {
-                            setState(() {
-                              _selectedLocationId = location.id;
-                              _selectedRegionCode = location.regionCode;
-                              _selectedReportId = null;
-                            });
-                          },
-                        ),
-                        _WaterQualityFilterDropdown<String>(
-                          value: selectedRegionCode,
-                          items: regionCodes,
-                          labelFor: (region) => region,
-                          maxWidth: 128,
-                          onSelected: (region) {
-                            setState(() {
-                              _selectedRegionCode = region;
-                              _selectedLocationId = _firstLocationIdForRegion(
-                                locations,
-                                region,
-                              );
-                              _selectedReportId = null;
-                            });
-                          },
-                        ),
-                      ],
+                    alignment: Alignment.centerRight,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        const filterGap = 8.0;
+                        final locationLabel = selectedLocation.name;
+                        final regionLabel = selectedRegionCode;
+                        final locationNaturalWidth = _filterChipWidthFor(
+                          context,
+                          locationLabel,
+                        );
+                        final regionNaturalWidth = _filterChipWidthFor(
+                          context,
+                          regionLabel,
+                        );
+                        final totalNaturalWidth = locationNaturalWidth +
+                            filterGap +
+                            regionNaturalWidth;
+                        final groupWidth =
+                            totalNaturalWidth.clamp(0.0, constraints.maxWidth);
+                        final fillableWidth =
+                            math.max(0.0, groupWidth - filterGap);
+                        final hasRoomForNaturalLabels =
+                            totalNaturalWidth <= constraints.maxWidth;
+                        final locationFilterWidth = hasRoomForNaturalLabels
+                            ? locationNaturalWidth
+                            : fillableWidth * 0.58;
+                        final regionFilterWidth = hasRoomForNaturalLabels
+                            ? regionNaturalWidth
+                            : fillableWidth - locationFilterWidth;
+
+                        return SizedBox(
+                          width: groupWidth,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: locationFilterWidth,
+                                child: _WaterQualityFilterDropdown<
+                                    _WaterLocationOption>(
+                                  value: selectedLocation,
+                                  items: locationItems,
+                                  labelFor: (location) => location.name,
+                                  maxWidth: locationFilterWidth,
+                                  shrinkLabel: !hasRoomForNaturalLabels,
+                                  onSelected: (location) {
+                                    setState(() {
+                                      _selectedLocationId = location.id;
+                                      _selectedRegionCode = location.regionCode;
+                                      _selectedReportId = null;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: filterGap),
+                              SizedBox(
+                                width: regionFilterWidth,
+                                child: _WaterQualityFilterDropdown<String>(
+                                  value: selectedRegionCode,
+                                  items: regionCodes,
+                                  labelFor: (region) => region,
+                                  maxWidth: regionFilterWidth,
+                                  shrinkLabel: !hasRoomForNaturalLabels,
+                                  onSelected: (region) {
+                                    setState(() {
+                                      _selectedRegionCode = region;
+                                      _selectedLocationId =
+                                          _firstLocationIdForRegion(
+                                        locations,
+                                        region,
+                                      );
+                                      _selectedReportId = null;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _WaterQualityTimeDropdown(
+                      selectedReport: selectedReport,
+                      reports: selectedDayReports,
+                      onReportSelected: _selectReport,
                     ),
                   ),
                   SizedBox(height: sectionGap),
@@ -250,6 +357,33 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
 
   double _lerp(double start, double end, double progress) {
     return start + (end - start) * progress;
+  }
+
+  double _filterChipWidthFor(BuildContext context, String label) {
+    const scale = _WaterQualityFilterDropdownState._scale;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(
+          fontFamily: AppTextStyles.fontFamily,
+          fontSize: 10 * scale,
+          fontWeight: FontWeight.w500,
+          decoration: TextDecoration.none,
+          color: AppColors.textPrimary,
+        ),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+
+    const iconWidth = 10 * scale;
+    const iconGap = 5.0;
+    const horizontalPadding = (8 + 10) * scale;
+
+    return (painter.width + iconWidth + iconGap + horizontalPadding)
+            .ceilToDouble() +
+        _dropdownTextWidthSlack;
   }
 
   String _resolveRegionCode(
@@ -299,11 +433,51 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
     return reports.last;
   }
 
+  List<WaterTestReport> _reportsForSelectedDay(
+    List<WaterTestReport> reports,
+    WaterTestReport selectedReport,
+  ) {
+    return reports
+        .where((report) => _isSameReportDay(report, selectedReport))
+        .toList(growable: false)
+      ..sort((a, b) => a.testedAt.compareTo(b.testedAt));
+  }
+
   void _selectReport(WaterTestReport report) {
     setState(() {
       _selectedRegionCode = report.regionCode;
       _selectedLocationId = report.locationId;
       _selectedReportId = report.id;
+    });
+  }
+
+  void _deleteReport(
+    WaterTestReport report,
+    List<WaterTestReport> currentReports,
+  ) {
+    final remainingReports = currentReports
+        .where((candidate) => candidate.id != report.id)
+        .toList(growable: false)
+      ..sort((a, b) => a.testedAt.compareTo(b.testedAt));
+    final sameDayReports = remainingReports
+        .where((candidate) => _isSameReportDay(candidate, report))
+        .toList(growable: false);
+    final sameLocationReports = remainingReports
+        .where((candidate) => candidate.locationId == report.locationId)
+        .toList(growable: false);
+    final fallbackReport = sameDayReports.isNotEmpty
+        ? sameDayReports.last
+        : sameLocationReports.isNotEmpty
+            ? sameLocationReports.last
+            : remainingReports.isNotEmpty
+                ? remainingReports.last
+                : null;
+
+    setState(() {
+      _deletedReportIds.add(report.id);
+      _selectedRegionCode = fallbackReport?.regionCode;
+      _selectedLocationId = fallbackReport?.locationId;
+      _selectedReportId = fallbackReport?.id;
     });
   }
 
@@ -364,12 +538,30 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
   }
 
   int _regionSortOrder(String regionCode) => regionCode == 'SF, CA' ? 0 : 1;
+
+  bool _isSameReportDay(WaterTestReport a, WaterTestReport b) {
+    return a.locationId == b.locationId &&
+        a.regionCode == b.regionCode &&
+        _reportDayKey(a) == _reportDayKey(b);
+  }
+
+  String _reportDayKey(WaterTestReport report) {
+    final separatorIndex = report.testedAtIso8601.indexOf('T');
+    if (separatorIndex > 0) {
+      return report.testedAtIso8601.substring(0, separatorIndex);
+    }
+
+    final date = report.testedAt;
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+
+    return '${date.year}-$month-$day';
+  }
 }
 
 class _WaterQualityPageShell extends StatelessWidget {
   const _WaterQualityPageShell({
     this.selectedReport,
-    this.selectedRegionCode,
     this.reports = const [],
     this.onReportSelected,
     this.child,
@@ -377,7 +569,6 @@ class _WaterQualityPageShell extends StatelessWidget {
   });
 
   final WaterTestReport? selectedReport;
-  final String? selectedRegionCode;
   final List<WaterTestReport> reports;
   final ValueChanged<WaterTestReport>? onReportSelected;
   final Widget? child;
@@ -434,7 +625,6 @@ class _WaterQualityPageShell extends StatelessWidget {
                         height: AppSpacing.topBarHeight,
                         child: _WaterQualityHeader(
                           selectedReport: selectedReport,
-                          selectedRegionCode: selectedRegionCode,
                           reports: reports,
                           contentWidth: contentWidth,
                           onReportSelected: onReportSelected,
@@ -457,14 +647,12 @@ class _WaterQualityPageShell extends StatelessWidget {
 class _WaterQualityHeader extends StatelessWidget {
   const _WaterQualityHeader({
     required this.selectedReport,
-    required this.selectedRegionCode,
     required this.reports,
     required this.contentWidth,
     required this.onReportSelected,
   });
 
   final WaterTestReport? selectedReport;
-  final String? selectedRegionCode;
   final List<WaterTestReport> reports;
   final double contentWidth;
   final ValueChanged<WaterTestReport>? onReportSelected;
@@ -490,7 +678,6 @@ class _WaterQualityHeader extends StatelessWidget {
         if (selectedReport case final report?)
           _WaterQualityDatePicker(
             selectedReport: report,
-            selectedRegionCode: selectedRegionCode ?? report.regionCode,
             reports: reports,
             contentWidth: contentWidth,
             onReportSelected: onReportSelected,
@@ -505,14 +692,12 @@ class _WaterQualityHeader extends StatelessWidget {
 class _WaterQualityDatePicker extends StatefulWidget {
   const _WaterQualityDatePicker({
     required this.selectedReport,
-    required this.selectedRegionCode,
     required this.reports,
     required this.contentWidth,
     required this.onReportSelected,
   });
 
   final WaterTestReport selectedReport;
-  final String selectedRegionCode;
   final List<WaterTestReport> reports;
   final double contentWidth;
   final ValueChanged<WaterTestReport>? onReportSelected;
@@ -524,8 +709,8 @@ class _WaterQualityDatePicker extends StatefulWidget {
 
 class _WaterQualityDatePickerState extends State<_WaterQualityDatePicker>
     with SingleTickerProviderStateMixin {
-  static const _panelMaxWidth = 361.0;
-  static const _panelShadowInset = 18.0;
+  static const _panelMaxWidth = 318.0;
+  static const _panelShadowInset = 14.0;
   static const _pillWidth = 126.0;
   static const _monthNames = [
     'January',
@@ -619,10 +804,6 @@ class _WaterQualityDatePickerState extends State<_WaterQualityDatePicker>
       builder: (context) {
         final panelWidth = math.min(_panelMaxWidth, widget.contentWidth);
         final horizontalOffset = -(panelWidth - _pillWidth) - _panelShadowInset;
-        final selectedLocationReports = widget.reports
-            .where((report) =>
-                report.locationId == widget.selectedReport.locationId)
-            .toList(growable: false);
 
         return Stack(
           children: [
@@ -658,8 +839,7 @@ class _WaterQualityDatePickerState extends State<_WaterQualityDatePicker>
                               child: _CalendarPanel(
                                 visibleMonth: _visibleMonth,
                                 selectedDate: widget.selectedReport.testedAt,
-                                selectedRegionCode: widget.selectedRegionCode,
-                                reports: selectedLocationReports,
+                                reports: widget.reports,
                                 onPreviousMonth: _showPreviousMonth,
                                 onNextMonth: _showNextMonth,
                                 onReportSelected: _selectReport,
@@ -798,7 +978,6 @@ class _CalendarPanel extends StatelessWidget {
   const _CalendarPanel({
     required this.visibleMonth,
     required this.selectedDate,
-    required this.selectedRegionCode,
     required this.reports,
     required this.onPreviousMonth,
     required this.onNextMonth,
@@ -807,7 +986,6 @@ class _CalendarPanel extends StatelessWidget {
 
   final DateTime visibleMonth;
   final DateTime selectedDate;
-  final String selectedRegionCode;
   final List<WaterTestReport> reports;
   final VoidCallback onPreviousMonth;
   final VoidCallback onNextMonth;
@@ -815,14 +993,14 @@ class _CalendarPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedLocationReportsByDate = _selectedLocationReportsByDate();
+    final reportsByDate = _reportsByDate();
     final rows = _calendarRows();
 
     return PebbleGlassCard(
       color: _dropdownMenuFill,
       blurSigma: 18,
       boxShadow: _figmaCalendarDropShadow,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+      padding: const EdgeInsets.fromLTRB(13, 14, 13, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -832,15 +1010,15 @@ class _CalendarPanel extends StatelessWidget {
                 _WaterQualityDatePickerState.monthLabel(visibleMonth),
                 style: const TextStyle(
                   fontFamily: AppTextStyles.fontFamily,
-                  fontSize: 17,
+                  fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  height: 22 / 17,
+                  height: 21 / 16,
                   color: AppColors.textPrimary,
                 ),
               ),
               const Icon(
                 Icons.chevron_right_rounded,
-                size: 20,
+                size: 18,
                 color: AppColors.lime,
               ),
               const Spacer(),
@@ -849,7 +1027,7 @@ class _CalendarPanel extends StatelessWidget {
                 icon: Icons.chevron_left_rounded,
                 onTap: onPreviousMonth,
               ),
-              const SizedBox(width: 18),
+              const SizedBox(width: 14),
               _CalendarArrowButton(
                 key: const ValueKey('water-calendar-next-month'),
                 icon: Icons.chevron_right_rounded,
@@ -857,9 +1035,9 @@ class _CalendarPanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           const _CalendarWeekdayRow(),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           for (final row in rows) ...[
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -869,7 +1047,7 @@ class _CalendarPanel extends StatelessWidget {
                     date: day,
                     report: day == null
                         ? null
-                        : selectedLocationReportsByDate[
+                        : reportsByDate[
                             _WaterQualityDatePickerState.dateKey(day)],
                     selected: day != null &&
                         _WaterQualityDatePickerState.dateKey(day) ==
@@ -878,21 +1056,17 @@ class _CalendarPanel extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 7),
+            const SizedBox(height: 4),
           ],
         ],
       ),
     );
   }
 
-  Map<String, WaterTestReport> _selectedLocationReportsByDate() {
+  Map<String, WaterTestReport> _reportsByDate() {
     final byDate = <String, WaterTestReport>{};
 
     for (final report in reports) {
-      if (report.regionCode != selectedRegionCode) {
-        continue;
-      }
-
       final testedAt = report.testedAt;
       if (testedAt.year != visibleMonth.year ||
           testedAt.month != visibleMonth.month) {
@@ -936,10 +1110,9 @@ class _CalendarPanel extends StatelessWidget {
 class _CalendarWeekdayRow extends StatelessWidget {
   const _CalendarWeekdayRow();
 
-  static const _cellWidth = 44.0;
   static const _labelStyle = TextStyle(
     fontFamily: AppTextStyles.fontFamily,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: FontWeight.w700,
     color: AppColors.textPrimary,
   );
@@ -958,7 +1131,7 @@ class _CalendarWeekdayRow extends StatelessWidget {
       children: [
         for (final label in labels)
           SizedBox(
-            width: _cellWidth,
+            width: _calendarCellSize,
             child: Text(
               label,
               maxLines: 1,
@@ -984,7 +1157,7 @@ class _CalendarWeekdayRow extends StatelessWidget {
       );
 
       painter.layout();
-      if (painter.width > _cellWidth) {
+      if (painter.width > _calendarCellSize) {
         return false;
       }
     }
@@ -1010,7 +1183,7 @@ class _CalendarArrowButton extends StatelessWidget {
       onTap: onTap,
       child: Icon(
         icon,
-        size: 30,
+        size: 28,
         color: AppColors.lime,
       ),
     );
@@ -1034,14 +1207,17 @@ class _CalendarDayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final date = this.date;
     if (date == null) {
-      return const SizedBox(width: 44, height: 44);
+      return const SizedBox(
+        width: _calendarCellSize,
+        height: _calendarCellSize,
+      );
     }
 
     final report = this.report;
     final hasRecord = report != null;
     final dayKey =
         'water-date-day-${_WaterQualityDatePickerState.dateKey(date)}';
-    final fontSize = selected ? 24.0 : 20.0;
+    final fontSize = selected ? 22.0 : 18.0;
     final fontWeight = selected ? FontWeight.w600 : FontWeight.w400;
     final textColor = hasRecord
         ? AppColors.lime
@@ -1049,8 +1225,8 @@ class _CalendarDayCell extends StatelessWidget {
 
     final cell = SizedBox(
       key: ValueKey(dayKey),
-      width: 44,
-      height: 44,
+      width: _calendarCellSize,
+      height: _calendarCellSize,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -1058,8 +1234,8 @@ class _CalendarDayCell extends StatelessWidget {
             duration: _uiTransitionDuration,
             opacity: selected ? 1 : 0,
             child: Container(
-              width: 44,
-              height: 44,
+              width: _calendarCellSize,
+              height: _calendarCellSize,
               decoration: BoxDecoration(
                 color: AppColors.lime.withValues(alpha: 0.38),
                 shape: BoxShape.circle,
@@ -1171,6 +1347,210 @@ class _DatePill extends StatelessWidget {
   }
 }
 
+class _WaterQualityTimeDropdown extends StatelessWidget {
+  const _WaterQualityTimeDropdown({
+    required this.selectedReport,
+    required this.reports,
+    required this.onReportSelected,
+  });
+
+  final WaterTestReport selectedReport;
+  final List<WaterTestReport> reports;
+  final ValueChanged<WaterTestReport> onReportSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final reportItems = reports.isEmpty ? [selectedReport] : reports;
+    final canOpen = reportItems.any((report) => report != selectedReport);
+    final selectedWidth = _timeChipWidthFor(
+      context,
+      selectedReport,
+      showIcon: canOpen,
+    );
+    final menuWidth = math.max(
+      selectedWidth,
+      _timeMenuWidthFor(context, reportItems),
+    );
+
+    return SizedBox(
+      key: const ValueKey('water-time-dropdown'),
+      width: selectedWidth,
+      child: _WaterQualityFilterDropdown<WaterTestReport>(
+        value: selectedReport,
+        items: reportItems,
+        labelFor: _timeLabelFor,
+        selectedLabelFor: _timeLabelFor,
+        menuLabelFor: _timeScoreLabelFor,
+        maxWidth: selectedWidth,
+        menuWidth: menuWidth,
+        minimumMenuWidth: 0,
+        onSelected: onReportSelected,
+      ),
+    );
+  }
+
+  double _timeChipWidthFor(
+    BuildContext context,
+    WaterTestReport report, {
+    required bool showIcon,
+  }) {
+    return _dropdownPillWidthFor(
+      context,
+      _timeLabelFor(report),
+      showIcon: showIcon,
+    );
+  }
+
+  double _dropdownPillWidthFor(
+    BuildContext context,
+    String label, {
+    required bool showIcon,
+  }) {
+    const scale = _WaterQualityFilterDropdownState._scale;
+    final textWidth = _textWidth(
+      context,
+      label,
+      const TextStyle(
+        fontFamily: AppTextStyles.fontFamily,
+        fontSize: 10 * scale,
+        fontWeight: FontWeight.w500,
+        decoration: TextDecoration.none,
+        color: AppColors.textPrimary,
+      ),
+    );
+    const horizontalPadding = (8 + 10) * scale;
+    const iconAndGapWidth = 10 * scale + 5;
+    final width =
+        textWidth + horizontalPadding + (showIcon ? iconAndGapWidth : 0);
+
+    return width.ceilToDouble() + _dropdownTextWidthSlack;
+  }
+
+  double _timeMenuWidthFor(
+    BuildContext context,
+    List<WaterTestReport> reports,
+  ) {
+    final widestChipWidth = reports.fold<double>(0, (maxWidth, report) {
+      return math.max(
+        maxWidth,
+        _dropdownPillWidthFor(
+          context,
+          _timeScoreLabelFor(report),
+          showIcon: true,
+        ),
+      );
+    });
+    const menuInset = _WaterQualityFilterDropdownState._menuInset;
+
+    return widestChipWidth + menuInset * 2;
+  }
+
+  double _textWidth(
+    BuildContext context,
+    String text,
+    TextStyle style,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+
+    return painter.width;
+  }
+
+  static String _timeLabelFor(WaterTestReport report) {
+    final isoTime = _timeLabelFromIso(report.testedAtIso8601);
+    if (isoTime != null) {
+      return isoTime;
+    }
+
+    final date = report.testedAt;
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    final second = date.second.toString().padLeft(2, '0');
+
+    return '$hour:$minute:$second';
+  }
+
+  static String? _timeLabelFromIso(String iso8601) {
+    final separatorIndex = iso8601.indexOf('T');
+    if (separatorIndex < 0 || separatorIndex + 1 >= iso8601.length) {
+      return null;
+    }
+
+    final rawTime = iso8601.substring(separatorIndex + 1);
+    final timeEnd = rawTime.indexOf(RegExp(r'[+-]|Z'));
+    final time = (timeEnd < 0 ? rawTime : rawTime.substring(0, timeEnd)).trim();
+    final parts = time.split(':');
+    if (parts.length < 2) {
+      return null;
+    }
+
+    final hour = parts[0].padLeft(2, '0');
+    final minute = parts[1].padLeft(2, '0');
+    final secondValue = parts.length >= 3 ? parts[2] : '00';
+    final second = secondValue.split('.').first.padLeft(2, '0').substring(0, 2);
+
+    return '$hour:$minute:$second';
+  }
+
+  static String _timeScoreLabelFor(WaterTestReport report) {
+    return '${_timeLabelFor(report)}  ${report.score}/100';
+  }
+}
+
+class _DeleteReportButton extends StatelessWidget {
+  const _DeleteReportButton({
+    required this.onTap,
+  });
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Delete selected test score',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0x66FF0000),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A4C7C09),
+                blurRadius: 10,
+                offset: Offset.zero,
+              ),
+              BoxShadow(
+                color: Color(0x1AFF0000),
+                blurRadius: 10,
+                offset: Offset.zero,
+              ),
+            ],
+          ),
+          child: SizedBox(
+            key: ValueKey('water-delete-report'),
+            height: 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              child: SvgPicture.asset(
+                'assets/figma/delete_rounded.svg',
+                width: 24,
+                height: 24,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _WaterQualityFilterDropdown<T> extends StatefulWidget {
   const _WaterQualityFilterDropdown({
     required this.value,
@@ -1178,13 +1558,23 @@ class _WaterQualityFilterDropdown<T> extends StatefulWidget {
     required this.labelFor,
     required this.onSelected,
     required this.maxWidth,
+    this.selectedLabelFor,
+    this.menuLabelFor,
+    this.shrinkLabel = false,
+    this.menuWidth,
+    this.minimumMenuWidth,
   });
 
   final T value;
   final List<T> items;
   final String Function(T item) labelFor;
+  final String Function(T item)? selectedLabelFor;
+  final String Function(T item)? menuLabelFor;
   final ValueChanged<T> onSelected;
   final double maxWidth;
+  final bool shrinkLabel;
+  final double? menuWidth;
+  final double? minimumMenuWidth;
 
   @override
   State<_WaterQualityFilterDropdown<T>> createState() =>
@@ -1254,6 +1644,7 @@ class _WaterQualityFilterDropdownState<T>
       return;
     }
 
+    final targetRect = _targetRectInOverlay();
     _overlayEntry = OverlayEntry(
       builder: (context) {
         return _ScaledDropdownOverlay<T>(
@@ -1262,11 +1653,15 @@ class _WaterQualityFilterDropdownState<T>
             -_shadowOutset - _menuInset,
             -_shadowOutset - _menuInset,
           ),
+          targetRect: targetRect,
           animation: _menuAnimation,
           value: widget.value,
           items: widget.items,
           labelFor: widget.labelFor,
+          menuLabelFor: widget.menuLabelFor,
           maxWidth: widget.maxWidth,
+          menuWidth: widget.menuWidth,
+          minimumMenuWidth: widget.minimumMenuWidth,
           onDismiss: _closeMenu,
           onSelected: (item) {
             _closeMenu();
@@ -1279,6 +1674,19 @@ class _WaterQualityFilterDropdownState<T>
     Overlay.of(context).insert(_overlayEntry!);
     setState(() => _isOpen = true);
     _menuController.forward(from: 0);
+  }
+
+  Rect? _targetRectInOverlay() {
+    final targetBox = context.findRenderObject();
+    final overlayBox = Overlay.of(context).context.findRenderObject();
+    if (targetBox is! RenderBox ||
+        overlayBox is! RenderBox ||
+        !targetBox.hasSize) {
+      return null;
+    }
+
+    final topLeft = targetBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    return topLeft & targetBox.size;
   }
 
   void _closeMenu({bool updateState = true}) {
@@ -1336,9 +1744,11 @@ class _WaterQualityFilterDropdownState<T>
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: widget.maxWidth),
               child: _ScaledDropdownPillChip(
-                label: widget.labelFor(widget.value),
+                label:
+                    (widget.selectedLabelFor ?? widget.labelFor)(widget.value),
                 scale: _scale,
                 showIcon: canOpen,
+                shrinkLabel: widget.shrinkLabel,
               ),
             ),
           ),
@@ -1352,13 +1762,17 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
   const _ScaledDropdownOverlay({
     required this.layerLink,
     required this.offset,
+    required this.targetRect,
     required this.animation,
     required this.value,
     required this.items,
     required this.labelFor,
+    required this.menuLabelFor,
     required this.onSelected,
     required this.onDismiss,
     required this.maxWidth,
+    this.menuWidth,
+    this.minimumMenuWidth,
   });
 
   static const double _scale = 1.6;
@@ -1368,18 +1782,27 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
 
   final LayerLink layerLink;
   final Offset offset;
+  final Rect? targetRect;
   final Animation<double> animation;
   final T value;
   final List<T> items;
   final String Function(T item) labelFor;
+  final String Function(T item)? menuLabelFor;
   final ValueChanged<T> onSelected;
   final VoidCallback onDismiss;
   final double maxWidth;
+  final double? menuWidth;
+  final double? minimumMenuWidth;
 
   @override
   Widget build(BuildContext context) {
     final availableItems =
         items.where((item) => item != value).toList(growable: false);
+    final resolvedMenuWidth = _resolvedMenuWidth(context, [
+      value,
+      ...availableItems,
+    ]);
+    final effectiveOffset = _effectiveOffset(context, resolvedMenuWidth);
 
     return Stack(
       children: [
@@ -1393,7 +1816,7 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
         CompositedTransformFollower(
           link: layerLink,
           showWhenUnlinked: false,
-          offset: offset,
+          offset: effectiveOffset,
           child: FadeTransition(
             opacity: animation,
             child: SizeTransition(
@@ -1411,7 +1834,7 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
                   child: Material(
                     type: MaterialType.transparency,
                     child: SizedBox(
-                      width: math.max(_menuWidth, maxWidth),
+                      width: resolvedMenuWidth,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: AppColors.white.withValues(alpha: 0.8),
@@ -1432,13 +1855,13 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
                             children: [
                               _ScaledSelectedDropdownItem<T>(
                                 value: value,
-                                label: labelFor(value),
+                                label: _itemLabel(value),
                                 onSelected: onSelected,
                               ),
                               for (final item in availableItems)
                                 _ScaledDropdownMenuItem<T>(
                                   value: item,
-                                  label: labelFor(item),
+                                  label: _itemLabel(item),
                                   onSelected: onSelected,
                                 ),
                             ],
@@ -1454,6 +1877,92 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Offset _effectiveOffset(BuildContext context, double menuWidth) {
+    final target = targetRect;
+    if (target == null) {
+      return offset;
+    }
+
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final rightAlignedDx = target.width - menuWidth - _shadowOutset;
+    final menuLeft = target.left + rightAlignedDx + _shadowOutset;
+    var shift = 0.0;
+    final overflowRight = menuLeft + menuWidth - viewportWidth;
+    if (overflowRight > 0) {
+      shift -= overflowRight;
+    }
+    final shiftedLeft = menuLeft + shift;
+    if (shiftedLeft < 0) {
+      shift -= shiftedLeft;
+    }
+
+    return Offset(rightAlignedDx + shift, offset.dy);
+  }
+
+  double _resolvedMenuWidth(BuildContext context, List<T> menuItems) {
+    final minimumWidth = minimumMenuWidth ?? _menuWidth;
+    final naturalWidth = _naturalMenuWidthFor(context, menuItems);
+    final preferredWidth = math.max(menuWidth ?? maxWidth, naturalWidth);
+    final maxScreenWidth = math.max(
+      minimumWidth,
+      MediaQuery.sizeOf(context).width - _shadowOutset * 2,
+    );
+
+    return math
+        .max(minimumWidth, preferredWidth)
+        .clamp(minimumWidth, maxScreenWidth)
+        .toDouble();
+  }
+
+  double _naturalMenuWidthFor(BuildContext context, List<T> menuItems) {
+    final widestPill = menuItems.fold<double>(0, (maxWidth, item) {
+      return math.max(
+        maxWidth,
+        _dropdownPillWidthFor(
+          context,
+          _itemLabel(item),
+          showIcon: true,
+        ),
+      );
+    });
+
+    return widestPill + _menuInset * 2;
+  }
+
+  double _dropdownPillWidthFor(
+    BuildContext context,
+    String label, {
+    required bool showIcon,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          fontFamily: AppTextStyles.fontFamily,
+          fontSize: 10 * _scale,
+          fontWeight: FontWeight.w500,
+          decoration: TextDecoration.none,
+          color: AppColors.textPrimary,
+        ),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    const horizontalPadding = (8 + 10) * _scale;
+    const iconAndGapWidth = 10 * _scale + 5;
+
+    return (painter.width +
+                horizontalPadding +
+                (showIcon ? iconAndGapWidth : 0))
+            .ceilToDouble() +
+        _dropdownTextWidthSlack;
+  }
+
+  String _itemLabel(T item) {
+    return (menuLabelFor ?? labelFor)(item);
   }
 }
 
@@ -1473,9 +1982,12 @@ class _ScaledSelectedDropdownItem<T> extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => onSelected(value),
-      child: _ScaledDropdownPillChip(
-        label: label,
-        scale: 1.6,
+      child: SizedBox(
+        width: double.infinity,
+        child: _ScaledDropdownPillChip(
+          label: label,
+          scale: 1.6,
+        ),
       ),
     );
   }
@@ -1535,11 +2047,13 @@ class _ScaledDropdownPillChip extends StatelessWidget {
     required this.label,
     required this.scale,
     this.showIcon = true,
+    this.shrinkLabel = false,
   });
 
   final String label;
   final double scale;
   final bool showIcon;
+  final bool shrinkLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1561,6 +2075,7 @@ class _ScaledDropdownPillChip extends StatelessWidget {
         decoration: TextDecoration.none,
         color: AppColors.textPrimary,
       ),
+      shrinkLabel: shrinkLabel,
       leading: showIcon
           ? Icon(
               Icons.keyboard_arrow_down_rounded,

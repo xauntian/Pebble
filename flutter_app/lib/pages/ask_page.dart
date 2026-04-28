@@ -291,7 +291,7 @@ class _AiSearchCardState extends State<_AiSearchCard> {
       return;
     }
 
-    _textController.text = widget.suggestions.first;
+    _textController.text = 'Voice search';
     await _submit(AiSearchSource.voice);
   }
 
@@ -551,42 +551,46 @@ class _AiSearchCardState extends State<_AiSearchCard> {
   Widget _buildAnswerPanel(double scale) {
     final response = _response;
 
-    return DecoratedBox(
-      decoration: _aiSearchContainerDecoration(radius: 15 * scale),
-      child: Padding(
-        padding: EdgeInsets.all(15 * scale),
-        child: response == null
-            ? const SizedBox.shrink()
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    response.prompt,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: AppTextStyles.fontFamily,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0x80000000),
+    return SizedBox(
+      key: const ValueKey('ai-search-answer-panel'),
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: _aiSearchContainerDecoration(radius: 15 * scale),
+        child: Padding(
+          padding: EdgeInsets.all(15 * scale),
+          child: response == null
+              ? const SizedBox.shrink()
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      response.prompt,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: AppTextStyles.fontFamily,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0x80000000),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Text(
-                        response.answer,
-                        style: const TextStyle(
-                          fontFamily: AppTextStyles.fontFamily,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                          color: Color(0x80000000),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Text(
+                          response.answer,
+                          style: const TextStyle(
+                            fontFamily: AppTextStyles.fontFamily,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                            color: Color(0x80000000),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+        ),
       ),
     );
   }

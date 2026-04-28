@@ -13,7 +13,7 @@ class DeviceConnection {
 
   const DeviceConnection.connected({
     this.deviceName = 'Test Kit',
-    required this.batteryPercent,
+    this.batteryPercent,
     this.productAssetPath = 'assets/figma/home-device.png',
   }) : state = DeviceConnectionState.connected;
 

@@ -172,70 +172,187 @@ class DeviceStatusCard extends StatelessWidget {
   const DeviceStatusCard({
     super.key,
     required this.data,
+    this.onConnect,
   });
+
+  final DeviceStatusCardData data;
+  final VoidCallback? onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final card = _DeviceCardFrame(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final contentWidth = math.min(
+            149.0,
+            constraints.maxWidth.isFinite ? constraints.maxWidth : 149.0,
+          );
+
+          return Center(
+            child: SizedBox(
+              width: contentWidth,
+              height: 188,
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 21,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Flexible(
+                          child: Text(
+                            "Your’s",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: AppTextStyles.fontFamily,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SvgPicture.asset(
+                              'assets/figma/device-card-battery.svg',
+                              width: 21,
+                              height: 21,
+                            ),
+                            const SizedBox(width: 5),
+                            SizedBox(
+                              width: 26,
+                              height: 10,
+                              child: Text(
+                                data.batteryLabel,
+                                maxLines: 1,
+                                textAlign: TextAlign.center,
+                                style: AppTextStyles.batteryLabel,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    width: contentWidth,
+                    height: 167,
+                    child: Column(
+                      children: [
+                        _DeviceConnectionVisual(
+                          isConnected: data.isConnected,
+                          width: contentWidth,
+                        ),
+                        Expanded(
+                          child: data.isConnected
+                              ? _ConnectedDeviceInfo(data: data)
+                              : _UnconnectedDeviceInfo(data: data),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (onConnect == null || data.isConnected) {
+      return card;
+    }
+
+    return Semantics(
+      button: true,
+      enabled: !data.isConnecting,
+      label: data.isConnecting
+          ? 'Connecting Pebble device'
+          : 'Connect Pebble device',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: data.isConnecting ? null : onConnect,
+        child: card,
+      ),
+    );
+  }
+}
+
+class _DeviceCardFrame extends StatelessWidget {
+  const _DeviceCardFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return PebbleGlassCard(
+      padding: const EdgeInsets.all(15),
+      color: AppColors.glass,
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x1A4C7C09),
+          blurRadius: 10,
+          offset: Offset.zero,
+        ),
+      ],
+      border: Border.all(color: Colors.transparent, width: 0),
+      child: child,
+    );
+  }
+}
+
+class _ConnectedDeviceInfo extends StatelessWidget {
+  const _ConnectedDeviceInfo({required this.data});
 
   final DeviceStatusCardData data;
 
   @override
   Widget build(BuildContext context) {
-    return _MetricCardFrame(
-      child: SizedBox(
-        height: 203,
-        child: Column(
+    return Column(
+      children: [
+        const SizedBox(height: 2),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Your Device',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                const Spacer(),
-                SvgPicture.asset(
-                  'assets/figma/battery.svg',
-                  width: 21,
-                  height: 21,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  data.batteryLabel,
-                  style: AppTextStyles.batteryLabel.copyWith(
-                    color: data.batteryLabelColor,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            _DeviceConnectionVisual(
-              isConnected: data.isConnected,
-              productAssetPath: data.productAssetPath,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _ConnectionDot(color: data.connectionDotColor),
-                const SizedBox(width: AppSpacing.sm),
-                Flexible(
-                  child: Text(
-                    data.deviceName,
-                    style: AppTextStyles.deviceLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              data.statusLabel,
-              style: AppTextStyles.statusLabel,
+            _ConnectionDot(color: data.connectionDotColor),
+            const SizedBox(width: 15),
+            Flexible(
+              child: Text(
+                data.deviceName,
+                style: AppTextStyles.deviceLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
+        const SizedBox(height: 15),
+        Text(
+          data.statusLabel,
+          style: AppTextStyles.statusLabel,
+        ),
+      ],
+    );
+  }
+}
+
+class _UnconnectedDeviceInfo extends StatelessWidget {
+  const _UnconnectedDeviceInfo({required this.data});
+
+  final DeviceStatusCardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Text(
+        data.statusLabel,
+        style: AppTextStyles.deviceLabel,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -244,14 +361,19 @@ class DeviceStatusCard extends StatelessWidget {
 class DeviceStatusCardData {
   const DeviceStatusCardData({
     required this.isConnected,
+    this.isConnecting = false,
     this.batteryPercent,
     this.deviceName = 'Test Kit',
     this.productAssetPath,
   });
 
-  factory DeviceStatusCardData.fromConnection(DeviceConnection connection) {
+  factory DeviceStatusCardData.fromConnection(
+    DeviceConnection connection, {
+    bool isConnecting = false,
+  }) {
     return DeviceStatusCardData(
       isConnected: connection.isConnected,
+      isConnecting: !connection.isConnected && isConnecting,
       batteryPercent: connection.isConnected ? connection.batteryPercent : null,
       deviceName: connection.deviceName,
       productAssetPath:
@@ -271,69 +393,56 @@ class DeviceStatusCardData {
   }
 
   final bool isConnected;
+  final bool isConnecting;
   final int? batteryPercent;
   final String deviceName;
   final String? productAssetPath;
 
-  String get statusLabel => isConnected ? 'connected' : 'unconnected';
+  String get statusLabel {
+    if (isConnecting) {
+      return 'Connecting';
+    }
+
+    return isConnected ? 'Connected' : 'Unconnected';
+  }
 
   String get batteryLabel {
     if (!isConnected || batteryPercent == null) {
-      return '--';
+      return '-';
     }
 
     return '$batteryPercent%';
   }
 
-  Color get batteryLabelColor =>
-      isConnected ? AppColors.textPrimary : AppColors.textMuted;
-
   Color get connectionDotColor =>
-      isConnected ? AppColors.success : AppColors.mapTransitOrange;
+      isConnected ? AppColors.success : AppColors.textMuted;
 }
 
 class _DeviceConnectionVisual extends StatelessWidget {
   const _DeviceConnectionVisual({
     required this.isConnected,
-    required this.productAssetPath,
+    required this.width,
   });
 
   final bool isConnected;
-  final String? productAssetPath;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
-    if (isConnected && productAssetPath != null) {
-      return ClipOval(
-        child: SizedBox(
-          width: 134,
-          height: 110,
-          child: Image.asset(
-            productAssetPath!,
-            fit: BoxFit.cover,
-            alignment: Alignment.center,
-          ),
-        ),
-      );
-    }
+    final assetPath = isConnected
+        ? 'assets/figma/device-card-connected.png'
+        : 'assets/figma/device-card-unconnected.png';
+    const height = 118.0;
 
-    return ClipOval(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppColors.limeSoft.withValues(alpha: 0.52),
-          border: Border.all(
-            color: AppColors.textSecondary.withValues(alpha: 0.16),
-          ),
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Image.asset(
+        assetPath,
+        key: ValueKey(
+          isConnected ? 'device-connected-image' : 'device-unconnected-image',
         ),
-        child: const SizedBox(
-          width: 134,
-          height: 110,
-          child: Icon(
-            Icons.bluetooth_searching_rounded,
-            size: 36,
-            color: AppColors.textSecondary,
-          ),
-        ),
+        fit: BoxFit.contain,
       ),
     );
   }
@@ -460,7 +569,7 @@ class _WaterQualityCardState extends State<WaterQualityCard> {
   }
 
   void _setInitialSelection() {
-    _selectedLocation = widget.data.locations.first;
+    _selectedLocation = widget.data.latestLocation;
     _selectedRegion = _selectedLocation.regionCode;
   }
 
@@ -595,15 +704,21 @@ class _WaterQualityCardState extends State<WaterQualityCard> {
 class WaterQualityCardData {
   const WaterQualityCardData({
     required this.locations,
+    required this.latestLocationId,
   });
 
   factory WaterQualityCardData.fromReports(List<WaterTestReport> reports) {
     final latestReports = <String, WaterTestReport>{};
+    WaterTestReport? latestReport;
 
     for (final report in reports) {
       final current = latestReports[report.locationId];
       if (current == null || report.testedAt.isAfter(current.testedAt)) {
         latestReports[report.locationId] = report;
+      }
+      if (latestReport == null ||
+          report.testedAt.isAfter(latestReport.testedAt)) {
+        latestReport = report;
       }
     }
 
@@ -630,13 +745,24 @@ class WaterQualityCardData {
         return a.name.compareTo(b.name);
       });
 
-    return WaterQualityCardData(locations: List.unmodifiable(locations));
+    return WaterQualityCardData(
+      locations: List.unmodifiable(locations),
+      latestLocationId: latestReport?.locationId ?? locations.first.id,
+    );
   }
 
   static int _regionSortOrder(String regionCode) =>
       regionCode == 'SF, CA' ? 0 : 1;
 
   final List<WaterQualityLocationOption> locations;
+  final String latestLocationId;
+
+  WaterQualityLocationOption get latestLocation {
+    return locations.firstWhere(
+      (location) => location.id == latestLocationId,
+      orElse: () => locations.first,
+    );
+  }
 
   List<String> get regionCodes {
     return List.unmodifiable(

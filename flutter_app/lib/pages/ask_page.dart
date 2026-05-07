@@ -19,7 +19,7 @@ class AskPage extends StatefulWidget {
   const AskPage({
     super.key,
     required this.snapshot,
-    this.aiResponder = const LocalAskAiResponder(),
+    this.aiResponder = const ApiAskAiResponder(),
   });
 
   final AppSnapshot snapshot;

@@ -36,6 +36,30 @@ const _dropdownMenuFill = Color(0xCCFFFFFF);
 const _uiTransitionDuration = Duration(milliseconds: 500);
 const _calendarCellSize = 38.0;
 const _dropdownTextWidthSlack = 10.0;
+const _dropdownTextHeightBehavior = TextHeightBehavior(
+  applyHeightToFirstAscent: false,
+  applyHeightToLastDescent: false,
+);
+
+TextStyle _scaledDropdownTextStyle(double scale) {
+  return TextStyle(
+    fontFamily: AppTextStyles.fontFamily,
+    fontSize: 10 * scale,
+    fontWeight: FontWeight.w500,
+    height: 1,
+    decoration: TextDecoration.none,
+    color: AppColors.textPrimary,
+  );
+}
+
+StrutStyle _scaledDropdownStrutStyle(double scale) {
+  return StrutStyle(
+    fontFamily: AppTextStyles.fontFamily,
+    fontSize: 10 * scale,
+    height: 1,
+    forceStrutHeight: true,
+  );
+}
 
 class WaterQualityPage extends StatefulWidget {
   WaterQualityPage({
@@ -364,13 +388,7 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
     final painter = TextPainter(
       text: TextSpan(
         text: label,
-        style: const TextStyle(
-          fontFamily: AppTextStyles.fontFamily,
-          fontSize: 10 * scale,
-          fontWeight: FontWeight.w500,
-          decoration: TextDecoration.none,
-          color: AppColors.textPrimary,
-        ),
+        style: _scaledDropdownTextStyle(scale),
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
@@ -998,7 +1016,7 @@ class _CalendarPanel extends StatelessWidget {
 
     return PebbleGlassCard(
       color: _dropdownMenuFill,
-      blurSigma: 18,
+      blurSigma: 10,
       boxShadow: _figmaCalendarDropShadow,
       padding: const EdgeInsets.fromLTRB(13, 14, 13, 16),
       child: Column(
@@ -1939,13 +1957,7 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
     final painter = TextPainter(
       text: TextSpan(
         text: label,
-        style: TextStyle(
-          fontFamily: AppTextStyles.fontFamily,
-          fontSize: 10 * _scale,
-          fontWeight: FontWeight.w500,
-          decoration: TextDecoration.none,
-          color: AppColors.textPrimary,
-        ),
+        style: _scaledDropdownTextStyle(_scale),
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
@@ -2017,23 +2029,20 @@ class _ScaledDropdownMenuItem<T> extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(
             8 * scale,
-            4 * scale,
+            0,
             10 * scale,
-            4 * scale,
+            0,
           ),
           child: Align(
-            alignment: Alignment.centerRight,
+            alignment: Alignment.center,
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: AppTextStyles.fontFamily,
-                fontSize: 10 * scale,
-                fontWeight: FontWeight.w500,
-                decoration: TextDecoration.none,
-                color: AppColors.textPrimary,
-              ),
+              textAlign: TextAlign.center,
+              textHeightBehavior: _dropdownTextHeightBehavior,
+              strutStyle: _scaledDropdownStrutStyle(scale),
+              style: _scaledDropdownTextStyle(scale),
             ),
           ),
         ),
@@ -2063,18 +2072,16 @@ class _ScaledDropdownPillChip extends StatelessWidget {
       labelWidth: null,
       padding: EdgeInsets.fromLTRB(
         8 * scale,
-        4 * scale,
+        0,
         10 * scale,
-        4 * scale,
+        0,
       ),
       borderRadius: AppRadius.pill,
-      textStyle: TextStyle(
-        fontFamily: AppTextStyles.fontFamily,
-        fontSize: 10 * scale,
-        fontWeight: FontWeight.w500,
-        decoration: TextDecoration.none,
-        color: AppColors.textPrimary,
-      ),
+      textStyle: _scaledDropdownTextStyle(scale),
+      labelAlignment: Alignment.center,
+      textAlign: TextAlign.center,
+      textHeightBehavior: _dropdownTextHeightBehavior,
+      strutStyle: _scaledDropdownStrutStyle(scale),
       shrinkLabel: shrinkLabel,
       leading: showIcon
           ? Icon(

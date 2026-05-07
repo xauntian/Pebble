@@ -15,7 +15,7 @@ class PebbleGlassCard extends StatelessWidget {
     this.borderRadius = const BorderRadius.all(
       Radius.circular(AppRadius.card),
     ),
-    this.blurSigma = 4,
+    this.blurSigma = 2.5,
     this.boxShadow = AppShadows.card,
     this.border,
   });

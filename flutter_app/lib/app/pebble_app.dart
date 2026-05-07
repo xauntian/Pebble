@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/water_test_report.dart';
 import '../navigation/app_shell.dart';
 import '../pages/water_quality_page.dart';
+import '../services/ask_ai_responder.dart';
 import '../services/water_quality_reports_api.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
@@ -13,29 +15,48 @@ import '../theme/app_text_styles.dart';
 import '../theme/app_theme.dart';
 
 class PebbleApp extends StatefulWidget {
-  const PebbleApp({super.key});
+  const PebbleApp({
+    super.key,
+    this.askAiResponder = const ApiAskAiResponder(),
+  });
+
+  final AskAiResponder askAiResponder;
 
   @override
   State<PebbleApp> createState() => _PebbleAppState();
 }
 
 class _PebbleAppState extends State<PebbleApp> {
+  static const _systemUiOverlayStyle = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarBrightness: Brightness.light,
+    statusBarIconBrightness: Brightness.dark,
+    systemStatusBarContrastEnforced: false,
+    systemNavigationBarColor: AppColors.background,
+    systemNavigationBarDividerColor: AppColors.background,
+    systemNavigationBarIconBrightness: Brightness.dark,
+    systemNavigationBarContrastEnforced: false,
+  );
+
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: _navigatorKey,
-      debugShowCheckedModeBanner: false,
-      title: 'Pebble',
-      theme: buildAppTheme(),
-      home: const AppShell(),
-      builder: (context, child) {
-        return _NewTestNoticeOverlay(
-          navigatorKey: _navigatorKey,
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _systemUiOverlayStyle,
+      child: MaterialApp(
+        navigatorKey: _navigatorKey,
+        debugShowCheckedModeBanner: false,
+        title: 'Pebble',
+        theme: buildAppTheme(),
+        home: AppShell(askAiResponder: widget.askAiResponder),
+        builder: (context, child) {
+          return _NewTestNoticeOverlay(
+            navigatorKey: _navigatorKey,
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
+      ),
     );
   }
 }
@@ -151,7 +172,7 @@ class _NewTestNoticeCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: borderRadius,
         child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: AppColors.white.withValues(alpha: 0.62),

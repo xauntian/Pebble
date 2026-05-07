@@ -15,5 +15,5 @@ class AppSpacing {
   static const double cardPadding = 15;
   static const double topBarHeight = 39;
   static const double navVerticalPadding = 10;
-  static const double navBottomOffset = 18;
+  static const double navBottomOffset = 30;
 }

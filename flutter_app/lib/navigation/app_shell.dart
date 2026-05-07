@@ -6,6 +6,7 @@ import '../models/app_snapshot.dart';
 import '../pages/ask_page.dart';
 import '../pages/home_page.dart';
 import '../pages/map_page.dart';
+import '../services/ask_ai_responder.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/responsive_layout.dart';
@@ -13,7 +14,12 @@ import 'app_destination.dart';
 import 'app_nav_bar.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({
+    super.key,
+    this.askAiResponder = const ApiAskAiResponder(),
+  });
+
+  final AskAiResponder askAiResponder;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -32,11 +38,15 @@ class _AppShellState extends State<AppShell> {
     final page = switch (_destination) {
       AppDestination.home => const HomePage(snapshot: _snapshot),
       AppDestination.map => const MapPage(snapshot: _snapshot),
-      AppDestination.ask => const AskPage(snapshot: _snapshot),
+      AppDestination.ask => AskPage(
+          snapshot: _snapshot,
+          aiResponder: widget.askAiResponder,
+        ),
     };
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         bottom: false,
         child: LayoutBuilder(

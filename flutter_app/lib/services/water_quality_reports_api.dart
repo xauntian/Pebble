@@ -20,6 +20,7 @@ class WaterQualityReportsApi {
         _baseUrl = baseUrl.trim();
 
   static final shared = WaterQualityReportsApi();
+  static const _fallbackRegionCode = 'SF, CA';
 
   final http.Client _client;
   final String _baseUrl;
@@ -57,19 +58,19 @@ class WaterQualityReportsApi {
     final gps = latitude != null && longitude != null
         ? _GpsSnapshot(latitude: latitude, longitude: longitude)
         : await _currentGpsSnapshot();
+    final baseReports = _latestBaseReports ?? SfWaterTestReports.all;
     final report = _generatedReportFromTds(
       tds: tds,
       testedAt: testedAt ?? DateTime.now(),
       gps: gps,
+      baseReports: baseReports,
     );
 
     _generatedReports
       ..removeWhere((existingReport) => existingReport.id == report.id)
       ..add(report);
 
-    final reports = _mergeGeneratedReports(
-      _latestBaseReports ?? SfWaterTestReports.all,
-    );
+    final reports = _mergeGeneratedReports(baseReports);
     if (!_reportsChangedController.isClosed) {
       _reportsChangedController.add(reports);
     }
@@ -170,6 +171,7 @@ class WaterQualityReportsApi {
     required int tds,
     required DateTime testedAt,
     required _GpsSnapshot gps,
+    required List<WaterTestReport> baseReports,
   }) {
     final tdsValue = tds.clamp(0, 2000).toInt();
     final latitude = _round(gps.latitude, 6);
@@ -179,7 +181,7 @@ class WaterQualityReportsApi {
         '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}';
     final locationName = gps.isFallback ? 'CCA' : 'Current GPS';
     final specificLocation = gps.isFallback ? 'CCA' : coordinateLabel;
-    final regionCode = gps.isFallback ? 'SF, CA' : 'GPS';
+    final regionCode = _regionCodeForGps(gps, baseReports);
     final derivedMetrics = _WaterMetricsFromTds(tdsValue);
 
     return WaterTestReport(
@@ -198,6 +200,42 @@ class WaterQualityReportsApi {
       temperatureCelsius: derivedMetrics.temperatureCelsius,
       cr6MgPerL: derivedMetrics.cr6MgPerL,
     );
+  }
+
+  String _regionCodeForGps(
+    _GpsSnapshot gps,
+    List<WaterTestReport> baseReports,
+  ) {
+    if (gps.isFallback) {
+      return _fallbackRegionCode;
+    }
+
+    final nearestReport = _nearestReportTo(gps, baseReports);
+
+    return nearestReport?.regionCode ?? _fallbackRegionCode;
+  }
+
+  WaterTestReport? _nearestReportTo(
+    _GpsSnapshot gps,
+    List<WaterTestReport> reports,
+  ) {
+    WaterTestReport? nearestReport;
+    var nearestDistanceMeters = double.infinity;
+
+    for (final report in reports) {
+      final distanceMeters = _distanceMeters(
+        gps.latitude,
+        gps.longitude,
+        report.latitude,
+        report.longitude,
+      );
+      if (distanceMeters < nearestDistanceMeters) {
+        nearestDistanceMeters = distanceMeters;
+        nearestReport = report;
+      }
+    }
+
+    return nearestReport;
   }
 
   Uri get _reportsUri {
@@ -249,6 +287,29 @@ class WaterQualityReportsApi {
     final factor = math.pow(10, fractionDigits).toDouble();
     return (value * factor).round() / factor;
   }
+
+  double _distanceMeters(
+    double startLatitude,
+    double startLongitude,
+    double endLatitude,
+    double endLongitude,
+  ) {
+    const earthRadiusMeters = 6371000.0;
+    final deltaLatitude = _degreesToRadians(endLatitude - startLatitude);
+    final deltaLongitude = _degreesToRadians(endLongitude - startLongitude);
+    final startLatitudeRadians = _degreesToRadians(startLatitude);
+    final endLatitudeRadians = _degreesToRadians(endLatitude);
+    final haversine = math.pow(math.sin(deltaLatitude / 2), 2) +
+        math.cos(startLatitudeRadians) *
+            math.cos(endLatitudeRadians) *
+            math.pow(math.sin(deltaLongitude / 2), 2);
+
+    return 2 *
+        earthRadiusMeters *
+        math.asin(math.min(1, math.sqrt(haversine).toDouble()));
+  }
+
+  double _degreesToRadians(double degrees) => degrees * math.pi / 180;
 
   String _formatDateLabel(DateTime date) {
     const months = [

@@ -40,6 +40,7 @@ class PebbleBluetoothConnectionService {
   BluetoothCharacteristic? _payloadCharacteristic;
   DeviceConnection _lastConnection = const DeviceConnection.unconnected();
   int? _lastBatteryPercent;
+  int? _lastReceivedTds;
   bool _isCheckingDeviceStatus = false;
   int _connectionWatcherCount = 0;
 
@@ -169,6 +170,7 @@ class PebbleBluetoothConnectionService {
             value,
             device: device,
             generateReportFromTds: true,
+            generateReportOnlyWhenTdsChanges: true,
           ),
         );
       });
@@ -184,7 +186,8 @@ class PebbleBluetoothConnectionService {
         await _handlePayloadBytes(
           initialValue,
           device: device,
-          generateReportFromTds: false,
+          generateReportFromTds: true,
+          generateReportOnlyWhenTdsChanges: true,
         );
       } catch (_) {
         // The next notification will update the card.
@@ -199,6 +202,8 @@ class PebbleBluetoothConnectionService {
   Future<BluetoothCharacteristic?> _findPayloadCharacteristic(
     BluetoothDevice device,
   ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
     final services = await device.discoverServices(timeout: 8);
     for (final service in services) {
       if (service.serviceUuid != pebbleServiceUuid) {
@@ -220,6 +225,7 @@ class PebbleBluetoothConnectionService {
     List<int> value, {
     required BluetoothDevice device,
     required bool generateReportFromTds,
+    bool generateReportOnlyWhenTdsChanges = false,
   }) async {
     final payload = _PebblePayload.tryParse(value);
     if (payload == null) {
@@ -234,7 +240,33 @@ class PebbleBluetoothConnectionService {
 
     final tds = payload.tds;
     if (generateReportFromTds && tds != null && tds > 0) {
-      await _reportsApi.addGeneratedTdsReport(tds);
+      final tdsChanged = tds != _lastReceivedTds;
+      _lastReceivedTds = tds;
+
+      if (!generateReportOnlyWhenTdsChanges || tdsChanged) {
+        await _reportsApi.addGeneratedTdsReport(tds);
+      }
+    } else if (tds != null) {
+      _lastReceivedTds = tds;
+    }
+  }
+
+  Future<void> _readLatestPayload(BluetoothDevice device) async {
+    final characteristic = _payloadCharacteristic;
+    if (characteristic == null) {
+      return;
+    }
+
+    try {
+      final value = await characteristic.read(timeout: 5);
+      await _handlePayloadBytes(
+        value,
+        device: device,
+        generateReportFromTds: true,
+        generateReportOnlyWhenTdsChanges: true,
+      );
+    } catch (_) {
+      // Notifications remain the primary update path.
     }
   }
 
@@ -348,7 +380,9 @@ class PebbleBluetoothConnectionService {
       }
 
       if (_payloadCharacteristic == null) {
-        unawaited(_ensurePayloadBridge(activeDevice));
+        await _ensurePayloadBridge(activeDevice);
+      } else {
+        await _readLatestPayload(activeDevice);
       }
     } catch (_) {
       final activeDevice = _activeDevice;
@@ -371,6 +405,7 @@ class PebbleBluetoothConnectionService {
     final deviceToDisconnect = device ?? _activeDevice;
     _activeDevice = null;
     _lastBatteryPercent = null;
+    _lastReceivedTds = null;
 
     if (disconnectDevice && deviceToDisconnect != null) {
       try {
@@ -495,6 +530,7 @@ class PebbleBluetoothConnectionService {
     try {
       await device.connect(
         license: License.free,
+        mtu: null,
         timeout: timeout,
       );
     } catch (_) {

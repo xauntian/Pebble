@@ -22,7 +22,36 @@ void main() {
     expect(report.testedAtIso8601, testedAt.toIso8601String());
     expect(report.locationName, 'Current GPS');
     expect(report.specificLocation, '37.76940, -122.48620');
+    expect(report.regionCode, 'SF, CA');
     expect(reports, contains(report));
+  });
+
+  test('classifies generated GPS reports into existing region categories',
+      () async {
+    final reportsApi = WaterQualityReportsApi();
+
+    final oaklandReport = await reportsApi.addGeneratedTdsReport(
+      144,
+      testedAt: DateTime(2026, 4, 28, 14),
+      latitude: 37.8044,
+      longitude: -122.258,
+    );
+    final berkeleyReport = await reportsApi.addGeneratedTdsReport(
+      144,
+      testedAt: DateTime(2026, 4, 28, 15),
+      latitude: 37.864,
+      longitude: -122.3134,
+    );
+    final dalyCityReport = await reportsApi.addGeneratedTdsReport(
+      144,
+      testedAt: DateTime(2026, 4, 28, 16),
+      latitude: 37.6993,
+      longitude: -122.4842,
+    );
+
+    expect(oaklandReport.regionCode, 'Oakland, CA');
+    expect(berkeleyReport.regionCode, 'Berkeley, CA');
+    expect(dalyCityReport.regionCode, 'Daly City, CA');
   });
 
   test('derives generated water quality metrics only from TDS', () async {

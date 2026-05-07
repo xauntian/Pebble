@@ -6,7 +6,8 @@
 
 // Pebble Nano ESP32 BLE bridge.
 // Advertises the Pebble service consumed by the Flutter Bluetooth client.
-// Sends JSON fields named battery_number and tds_number.
+// Sends battery_number heartbeats and one-shot tds_number readings.
+// TDS readings are manual Serial Monitor inputs; no TDS sensor pin is read.
 
 static const char* DEVICE_NAME = "Pebble TestKit";
 
@@ -29,26 +30,27 @@ static const uint8_t MIN_STATUS_SATURATION = 80;
 static const uint8_t MAX_STATUS_SATURATION = 255;
 static const unsigned long BLE_NOTIFY_INTERVAL_MS = 5000;
 static const unsigned long FIRST_NOTIFY_DELAY_MS = 700;
+static const unsigned long TDS_PAYLOAD_HOLD_MS = 1000;
 
 BLECharacteristic* pebblePayloadCharacteristic = nullptr;
 Adafruit_NeoPixel ledRing(LED_RING_COUNT, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
 
 bool deviceConnected = false;
 bool initialNotifyPending = false;
+bool clearTdsPayloadPending = false;
 String battery_number = "85";
 String tds_number = "0";
 unsigned long connectedAt = 0;
 unsigned long lastNotifyAt = 0;
+unsigned long tdsPayloadPublishedAt = 0;
 
-String batteryPayload() {
+String tdsPayload() {
   return "{\"battery_number\":\"" + battery_number + "\",\"tds_number\":\"" + tds_number + "\"}";
 }
 
 String batteryOnlyPayload() {
   return "{\"battery_number\":\"" + battery_number + "\"}";
 }
-
-void publishBatteryNumber(bool notifyConnected = true);
 
 class PebbleServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
@@ -83,11 +85,14 @@ void publishPayload(const String& payload, bool notifyConnected = true) {
 }
 
 void publishBatteryOnlyPayload(bool notifyConnected = true) {
+  clearTdsPayloadPending = false;
   publishPayload(batteryOnlyPayload(), notifyConnected);
 }
 
-void publishBatteryNumber(bool notifyConnected) {
-  publishPayload(batteryPayload(), notifyConnected);
+void publishTdsPayload(bool notifyConnected = true) {
+  publishPayload(tdsPayload(), notifyConnected);
+  clearTdsPayloadPending = true;
+  tdsPayloadPublishedAt = millis();
 }
 
 void updateBatteryNumber(String nextValue) {
@@ -136,7 +141,13 @@ void updateTdsNumber(String nextValue) {
   const int tdsValue = normalizedValue.toInt();
   tds_number = String(tdsValue);
   showWaterQualityOnLedRing(tdsValue);
-  publishBatteryNumber();
+  publishTdsPayload();
+}
+
+void clearTdsNumber() {
+  tds_number = "0";
+  showWaterQualityOnLedRing(0);
+  publishBatteryOnlyPayload();
 }
 
 uint8_t statusSaturation(int tdsValue, int rangeMin, int rangeMax) {
@@ -194,6 +205,11 @@ void readSerialCommand() {
 
   String command = input;
   command.toLowerCase();
+
+  if (command == "clear_tds" || command == "clear_tds_number") {
+    clearTdsNumber();
+    return;
+  }
 
   const String batteryPrefix = "battery_number=";
   if (command.startsWith(batteryPrefix)) {
@@ -279,7 +295,8 @@ void setup() {
   Serial.println("tds_number=123");
   Serial.println("Send battery through Serial, for example:");
   Serial.println("battery_number=85");
-  Serial.println("TDS is sent only when you type a value in Serial Monitor.");
+  Serial.println("TDS is sent only once when you type a value in Serial Monitor.");
+  Serial.println("Type clear_tds to clear a stale manual TDS value.");
   Serial.println("WS2812B LED ring reads DI from D5.");
 }
 
@@ -290,6 +307,10 @@ void loop() {
   if (initialNotifyPending && now - connectedAt >= FIRST_NOTIFY_DELAY_MS) {
     initialNotifyPending = false;
     publishBatteryOnlyPayload();
+  }
+
+  if (clearTdsPayloadPending && now - tdsPayloadPublishedAt >= TDS_PAYLOAD_HOLD_MS) {
+    publishBatteryOnlyPayload(false);
   }
 
   if (deviceConnected && now - lastNotifyAt >= BLE_NOTIFY_INTERVAL_MS) {

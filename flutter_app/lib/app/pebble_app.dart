@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -76,6 +77,7 @@ class _NewTestNoticeOverlay extends StatefulWidget {
 
 class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
   late final StreamSubscription<WaterTestReport> _generatedReportSubscription;
+  final Queue<WaterTestReport> _queuedReports = Queue<WaterTestReport>();
   WaterTestReport? _pendingReport;
 
   @override
@@ -88,7 +90,11 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
       }
 
       setState(() {
-        _pendingReport = report;
+        if (_pendingReport == null) {
+          _pendingReport = report;
+        } else {
+          _queuedReports.add(report);
+        }
       });
     });
   }
@@ -133,12 +139,14 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
 
   void _clearNotice() {
     setState(() {
-      _pendingReport = null;
+      _showNextNotice();
     });
   }
 
   void _openGeneratedReport(WaterTestReport report) {
-    _clearNotice();
+    setState(() {
+      _showNextNotice();
+    });
     widget.navigatorKey.currentState?.push(
       MaterialPageRoute<void>(
         settings: const RouteSettings(name: WaterQualityPage.routeName),
@@ -151,6 +159,11 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
         },
       ),
     );
+  }
+
+  void _showNextNotice() {
+    _pendingReport =
+        _queuedReports.isEmpty ? null : _queuedReports.removeFirst();
   }
 }
 
@@ -207,31 +220,37 @@ class _NewTestNoticeCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        _NoticeActionButton(
-                          label: 'Cancel',
-                          backgroundColor:
-                              AppColors.textPrimary.withValues(alpha: 0.05),
-                          foregroundColor: AppColors.textPrimary,
-                          onTap: onCancel,
-                        ),
-                        const SizedBox(width: 10),
-                        _NoticeActionButton(
-                          label: 'View',
-                          backgroundColor: AppColors.lime,
-                          foregroundColor: AppColors.white,
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x1A4C7C09),
-                              blurRadius: 10,
-                              offset: Offset.zero,
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _NoticeActionButton(
+                              label: 'Cancel',
+                              backgroundColor:
+                                  AppColors.textPrimary.withValues(alpha: 0.05),
+                              foregroundColor: AppColors.textPrimary,
+                              onTap: onCancel,
+                            ),
+                            const SizedBox(width: 10),
+                            _NoticeActionButton(
+                              label: 'View',
+                              backgroundColor: AppColors.lime,
+                              foregroundColor: AppColors.white,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x1A4C7C09),
+                                  blurRadius: 10,
+                                  offset: Offset.zero,
+                                ),
+                              ],
+                              onTap: onView,
                             ),
                           ],
-                          onTap: onView,
                         ),
-                      ],
+                      ),
                     ),
                   ],
                 ),

@@ -20,15 +20,18 @@ static const char* PEBBLE_PAYLOAD_UUID = "7b7d0002-4f8a-4c28-9f2a-6f0a8f0d1000";
 #define BRIGHTNESS 60
 
 static const unsigned long FIRST_NOTIFY_DELAY_MS = 700;
+static const unsigned long TDS_PAYLOAD_HOLD_MS = 1000;
 
 BLECharacteristic* pebblePayloadCharacteristic = nullptr;
 CRGB leds[NUM_LEDS];
 
 bool deviceConnected = false;
 bool initialNotifyPending = false;
+bool clearTdsPayloadPending = false;
 String battery_number = "85";
 String tds_number = "0";
 unsigned long connectedAt = 0;
+unsigned long tdsPayloadPublishedAt = 0;
 
 struct TdsResult {
   const char* result;
@@ -103,9 +106,12 @@ void publishPayloadText(const String& nextPayload, bool notifyConnected = true) 
 
 void publishPayload(bool notifyConnected = true) {
   publishPayloadText(payload(), notifyConnected);
+  clearTdsPayloadPending = true;
+  tdsPayloadPublishedAt = millis();
 }
 
 void publishBatteryOnlyPayload(bool notifyConnected = true) {
+  clearTdsPayloadPending = false;
   publishPayloadText(batteryOnlyPayload(), notifyConnected);
 }
 
@@ -162,6 +168,12 @@ void handleTdsInput(String input) {
   publishPayload();
 }
 
+void clearTdsNumber() {
+  tds_number = "0";
+  showResultColor(CRGB::White);
+  publishBatteryOnlyPayload();
+}
+
 class PebbleServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
     deviceConnected = true;
@@ -199,7 +211,7 @@ void setupBle() {
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
   );
   pebblePayloadCharacteristic->addDescriptor(new BLE2902());
-  publishPayload(false);
+  publishBatteryOnlyPayload(false);
 
   pebbleService->start();
 
@@ -222,17 +234,34 @@ void setup() {
   Serial.print("BLE is advertising as ");
   Serial.println(DEVICE_NAME);
   Serial.println("Type a TDS value like 144, tds=144, or tds_number=144.");
+  Serial.println("TDS is sent once. Type clear_tds to return to battery-only payloads.");
 }
 
 void loop() {
+  const unsigned long now = millis();
+
   if (initialNotifyPending && millis() - connectedAt >= FIRST_NOTIFY_DELAY_MS) {
     initialNotifyPending = false;
     publishBatteryOnlyPayload();
+  }
+
+  if (clearTdsPayloadPending && now - tdsPayloadPublishedAt >= TDS_PAYLOAD_HOLD_MS) {
+    publishBatteryOnlyPayload(false);
   }
 
   if (!Serial.available()) {
     return;
   }
 
-  handleTdsInput(Serial.readStringUntil('\n'));
+  String input = Serial.readStringUntil('\n');
+  input.trim();
+
+  String command = input;
+  command.toLowerCase();
+  if (command == "clear_tds" || command == "clear_tds_number") {
+    clearTdsNumber();
+    return;
+  }
+
+  handleTdsInput(input);
 }

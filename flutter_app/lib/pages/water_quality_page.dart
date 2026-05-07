@@ -84,7 +84,6 @@ class WaterQualityPage extends StatefulWidget {
 class _WaterQualityPageState extends State<WaterQualityPage> {
   late Future<List<WaterTestReport>> _reportsFuture;
   late final StreamSubscription<WaterTestReport> _generatedReportSubscription;
-  final Set<String> _deletedReportIds = <String>{};
   String? _selectedLocationId;
   String? _selectedRegionCode;
   String? _selectedReportId;
@@ -100,7 +99,6 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
       }
 
       setState(() {
-        _deletedReportIds.remove(report.id);
         _selectedRegionCode = report.regionCode;
         _selectedLocationId = report.locationId;
         _selectedReportId = report.id;
@@ -136,9 +134,7 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
           );
         }
 
-        final reports = fetchedReports
-            .where((report) => !_deletedReportIds.contains(report.id))
-            .toList(growable: false);
+        final reports = fetchedReports;
         if (reports.isEmpty) {
           return const _WaterQualityPageShell(
             child: Center(
@@ -156,6 +152,8 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
   }
 
   Widget _buildLoadedPage(List<WaterTestReport> reports) {
+    _selectLatestReportIfNeeded(reports);
+
     final locations = _latestLocations(reports);
     final regionCodes = _regionCodes(locations);
     final selectedRegionCode = _resolveRegionCode(locations, regionCodes);
@@ -192,7 +190,7 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
           selectedReports: selectedReports,
           selectedDayReports: selectedDayReports,
           onDeleteSelectedReport: () {
-            _deleteReport(selectedReport, reports);
+            _confirmAndDeleteReport(selectedReport);
           },
         );
       },
@@ -469,34 +467,101 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
     });
   }
 
-  void _deleteReport(
-    WaterTestReport report,
-    List<WaterTestReport> currentReports,
-  ) {
-    final remainingReports = currentReports
-        .where((candidate) => candidate.id != report.id)
-        .toList(growable: false)
-      ..sort((a, b) => a.testedAt.compareTo(b.testedAt));
-    final sameDayReports = remainingReports
-        .where((candidate) => _isSameReportDay(candidate, report))
-        .toList(growable: false);
-    final sameLocationReports = remainingReports
-        .where((candidate) => candidate.locationId == report.locationId)
-        .toList(growable: false);
-    final fallbackReport = sameDayReports.isNotEmpty
-        ? sameDayReports.last
-        : sameLocationReports.isNotEmpty
-            ? sameLocationReports.last
-            : remainingReports.isNotEmpty
-                ? remainingReports.last
-                : null;
+  void _selectLatestReportIfNeeded(List<WaterTestReport> reports) {
+    if (_selectedReportId != null ||
+        _selectedLocationId != null ||
+        _selectedRegionCode != null) {
+      return;
+    }
+
+    final latestReport = reports.reduce(
+      (latest, report) =>
+          report.testedAt.isAfter(latest.testedAt) ? report : latest,
+    );
+    _selectedRegionCode = latestReport.regionCode;
+    _selectedLocationId = latestReport.locationId;
+    _selectedReportId = latestReport.id;
+  }
+
+  Future<void> _confirmAndDeleteReport(WaterTestReport report) async {
+    final confirmed = await _showDeleteReportConfirmation(context);
+    if (!mounted || !confirmed) {
+      return;
+    }
+
+    await _deleteReport(report);
+  }
+
+  Future<void> _deleteReport(WaterTestReport report) async {
+    final remainingReports = await widget.reportsApi.deleteReport(report.id);
+    if (!mounted) {
+      return;
+    }
+
+    final fallbackReport = _fallbackReportAfterDelete(report, remainingReports);
 
     setState(() {
-      _deletedReportIds.add(report.id);
+      _reportsFuture = Future<List<WaterTestReport>>.value(remainingReports);
       _selectedRegionCode = fallbackReport?.regionCode;
       _selectedLocationId = fallbackReport?.locationId;
       _selectedReportId = fallbackReport?.id;
     });
+  }
+
+  WaterTestReport? _fallbackReportAfterDelete(
+    WaterTestReport deletedReport,
+    List<WaterTestReport> remainingReports,
+  ) {
+    final sortedReports = [...remainingReports]
+      ..sort((a, b) => a.testedAt.compareTo(b.testedAt));
+    final sameDayReports = sortedReports
+        .where((candidate) => _isSameReportDay(candidate, deletedReport))
+        .toList(growable: false);
+    final sameLocationReports = sortedReports
+        .where((candidate) => candidate.locationId == deletedReport.locationId)
+        .toList(growable: false);
+
+    return sameDayReports.isNotEmpty
+        ? sameDayReports.last
+        : sameLocationReports.isNotEmpty
+            ? sameLocationReports.last
+            : sortedReports.isNotEmpty
+                ? sortedReports.last
+                : null;
+  }
+
+  Future<bool> _showDeleteReportConfirmation(BuildContext context) async {
+    final confirmed = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withValues(alpha: 0.2),
+      transitionDuration: const Duration(milliseconds: 160),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Center(
+          child: _DeleteReportConfirmationCard(
+            onCancel: () => Navigator.of(context).pop(false),
+            onDelete: () => Navigator.of(context).pop(true),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curvedAnimation = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+
+        return FadeTransition(
+          opacity: curvedAnimation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1).animate(curvedAnimation),
+            child: child,
+          ),
+        );
+      },
+    );
+
+    return confirmed ?? false;
   }
 
   List<_WaterLocationOption> _latestLocations(List<WaterTestReport> reports) {
@@ -1560,6 +1625,154 @@ class _DeleteReportButton extends StatelessWidget {
                 'assets/figma/delete_rounded.svg',
                 width: 24,
                 height: 24,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeleteReportConfirmationCard extends StatelessWidget {
+  const _DeleteReportConfirmationCard({
+    required this.onCancel,
+    required this.onDelete,
+  });
+
+  final VoidCallback onCancel;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(20);
+
+    return Material(
+      type: MaterialType.transparency,
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.white.withValues(alpha: 0.62),
+              borderRadius: borderRadius,
+              border: Border.all(
+                color: AppColors.white.withValues(alpha: 0.4),
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1A4C7C09),
+                  blurRadius: 18,
+                  offset: Offset.zero,
+                ),
+              ],
+            ),
+            child: SizedBox(
+              width: 239,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Delete this test result?',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontFamily: AppTextStyles.fontFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _DeleteConfirmationActionButton(
+                              label: 'Cancel',
+                              backgroundColor:
+                                  AppColors.textPrimary.withValues(alpha: 0.05),
+                              foregroundColor: AppColors.textPrimary,
+                              onTap: onCancel,
+                            ),
+                            const SizedBox(width: 10),
+                            _DeleteConfirmationActionButton(
+                              key: const ValueKey(
+                                'water-confirm-delete-report',
+                              ),
+                              label: 'Delete',
+                              backgroundColor: const Color(0xCCFF3B30),
+                              foregroundColor: AppColors.white,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x1AFF0000),
+                                  blurRadius: 10,
+                                  offset: Offset.zero,
+                                ),
+                              ],
+                              onTap: onDelete,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeleteConfirmationActionButton extends StatelessWidget {
+  const _DeleteConfirmationActionButton({
+    super.key,
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.onTap,
+    this.boxShadow = const [],
+  });
+
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final VoidCallback onTap;
+  final List<BoxShadow> boxShadow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            boxShadow: boxShadow,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                fontFamily: AppTextStyles.fontFamily,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: foregroundColor,
               ),
             ),
           ),

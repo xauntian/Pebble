@@ -26,6 +26,7 @@ class WaterQualityReportsApi {
   final String _baseUrl;
   final String reportsPath;
   final List<WaterTestReport> _generatedReports = <WaterTestReport>[];
+  final Set<String> _deletedReportIds = <String>{};
   final StreamController<List<WaterTestReport>> _reportsChangedController =
       StreamController<List<WaterTestReport>>.broadcast();
   final StreamController<WaterTestReport> _generatedReportController =
@@ -40,13 +41,14 @@ class WaterQualityReportsApi {
 
   void clearGeneratedReportsForTesting() {
     _generatedReports.clear();
+    _deletedReportIds.clear();
   }
 
   Future<List<WaterTestReport>> fetchReports() async {
     final baseReports = await _fetchBaseReports();
     _latestBaseReports = baseReports;
 
-    return _mergeGeneratedReports(baseReports);
+    return _mergeReports(baseReports);
   }
 
   Future<WaterTestReport> addGeneratedTdsReport(
@@ -66,19 +68,34 @@ class WaterQualityReportsApi {
       baseReports: baseReports,
     );
 
+    await _pushGeneratedReport(report);
+
     _generatedReports
       ..removeWhere((existingReport) => existingReport.id == report.id)
       ..add(report);
+    _deletedReportIds.remove(report.id);
 
-    final reports = _mergeGeneratedReports(baseReports);
-    if (!_reportsChangedController.isClosed) {
-      _reportsChangedController.add(reports);
-    }
+    final reports = _mergeReports(baseReports);
+    _emitReportsChanged(reports);
     if (!_generatedReportController.isClosed) {
       _generatedReportController.add(report);
     }
 
     return report;
+  }
+
+  Future<List<WaterTestReport>> deleteReport(String reportId) async {
+    await _deleteRemoteReport(reportId);
+
+    final baseReports = _latestBaseReports ?? await _fetchBaseReports();
+    _latestBaseReports = baseReports;
+    _generatedReports.removeWhere((report) => report.id == reportId);
+    _deletedReportIds.add(reportId);
+
+    final reports = _mergeReports(baseReports);
+    _emitReportsChanged(reports);
+
+    return reports;
   }
 
   Future<List<WaterTestReport>> _fetchBaseReports() async {
@@ -107,18 +124,63 @@ class WaterQualityReportsApi {
     }
   }
 
-  List<WaterTestReport> _mergeGeneratedReports(
+  List<WaterTestReport> _mergeReports(
     List<WaterTestReport> baseReports,
   ) {
-    if (_generatedReports.isEmpty) {
+    if (_generatedReports.isEmpty && _deletedReportIds.isEmpty) {
       return List<WaterTestReport>.unmodifiable(baseReports);
     }
 
     final generatedIds = _generatedReports.map((report) => report.id).toSet();
     return List<WaterTestReport>.unmodifiable([
-      ...baseReports.where((report) => !generatedIds.contains(report.id)),
-      ..._generatedReports,
+      ...baseReports.where(
+        (report) =>
+            !generatedIds.contains(report.id) &&
+            !_deletedReportIds.contains(report.id),
+      ),
+      ..._generatedReports.where(
+        (report) => !_deletedReportIds.contains(report.id),
+      ),
     ]);
+  }
+
+  void _emitReportsChanged(List<WaterTestReport> reports) {
+    if (!_reportsChangedController.isClosed) {
+      _reportsChangedController.add(reports);
+    }
+  }
+
+  Future<void> _pushGeneratedReport(WaterTestReport report) async {
+    if (_baseUrl.isEmpty) {
+      return;
+    }
+
+    try {
+      await _client
+          .post(
+            _reportsUri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(report.toJson()),
+          )
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Keep the result in the local in-memory library when the remote API
+      // is unavailable.
+    }
+  }
+
+  Future<void> _deleteRemoteReport(String reportId) async {
+    if (_baseUrl.isEmpty) {
+      return;
+    }
+
+    try {
+      await _client
+          .delete(_reportUri(reportId))
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Local deletion state keeps the UI correct even without a remote API.
+    }
   }
 
   Future<_GpsSnapshot> _currentGpsSnapshot() async {
@@ -247,6 +309,17 @@ class WaterQualityReportsApi {
       pathSegments: [
         ...baseUri.pathSegments.where((segment) => segment.isNotEmpty),
         ...normalizedPath.split('/').where((segment) => segment.isNotEmpty),
+      ],
+    );
+  }
+
+  Uri _reportUri(String reportId) {
+    final reportsUri = _reportsUri;
+
+    return reportsUri.replace(
+      pathSegments: [
+        ...reportsUri.pathSegments.where((segment) => segment.isNotEmpty),
+        reportId,
       ],
     );
   }

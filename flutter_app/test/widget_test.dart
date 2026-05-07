@@ -276,6 +276,8 @@ void main() {
 
   testWidgets('selects and deletes same-day water test times',
       (WidgetTester tester) async {
+    WaterQualityReportsApi.shared.clearGeneratedReportsForTesting();
+    addTearDown(WaterQualityReportsApi.shared.clearGeneratedReportsForTesting);
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 420 / 160;
     addTearDown(tester.view.resetPhysicalSize);
@@ -300,6 +302,20 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('water-delete-report')));
     await tester.pumpAndSettle();
+
+    expect(find.text('Delete this test result?'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('water-confirm-delete-report')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('10:24:00'), findsNothing);
+    expect(find.text('12:20:20'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Water Quality'));
+    await tester.pumpAndSettle();
+    await _selectSfAnimalPark(tester);
 
     expect(find.text('10:24:00'), findsNothing);
     expect(find.text('12:20:20'), findsOneWidget);
@@ -452,7 +468,7 @@ void main() {
       latitude: 37.7694,
       longitude: -122.4862,
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('You have a new test result'), findsOneWidget);
 
@@ -481,7 +497,7 @@ void main() {
       latitude: 37.7694,
       longitude: -122.4862,
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('You have a new test result'), findsOneWidget);
     expect(find.text('View'), findsOneWidget);

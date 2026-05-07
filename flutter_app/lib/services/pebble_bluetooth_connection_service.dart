@@ -27,6 +27,7 @@ class PebbleBluetoothConnectionService {
     'pebble testkit',
   ];
   static const _deviceStatusCheckInterval = Duration(seconds: 4);
+  static const _sameTdsDuplicateWindow = Duration(seconds: 2);
 
   final List<String> deviceNameKeywords;
   final WaterQualityReportsApi _reportsApi;
@@ -41,6 +42,7 @@ class PebbleBluetoothConnectionService {
   DeviceConnection _lastConnection = const DeviceConnection.unconnected();
   int? _lastBatteryPercent;
   int? _lastReceivedTds;
+  DateTime? _lastReceivedTdsAt;
   bool _isCheckingDeviceStatus = false;
   int _connectionWatcherCount = 0;
 
@@ -240,15 +242,29 @@ class PebbleBluetoothConnectionService {
 
     final tds = payload.tds;
     if (generateReportFromTds && tds != null && tds > 0) {
-      final tdsChanged = tds != _lastReceivedTds;
+      final isDuplicateTds = _isDuplicateTdsPayload(tds);
       _lastReceivedTds = tds;
+      _lastReceivedTdsAt = DateTime.now();
 
-      if (!generateReportOnlyWhenTdsChanges || tdsChanged) {
+      if (!generateReportOnlyWhenTdsChanges || !isDuplicateTds) {
         await _reportsApi.addGeneratedTdsReport(tds);
       }
     } else if (tds != null) {
       _lastReceivedTds = tds;
+      _lastReceivedTdsAt = DateTime.now();
+    } else {
+      _lastReceivedTds = null;
+      _lastReceivedTdsAt = null;
     }
+  }
+
+  bool _isDuplicateTdsPayload(int tds) {
+    final lastReceivedAt = _lastReceivedTdsAt;
+    if (_lastReceivedTds != tds || lastReceivedAt == null) {
+      return false;
+    }
+
+    return DateTime.now().difference(lastReceivedAt) < _sameTdsDuplicateWindow;
   }
 
   Future<void> _readLatestPayload(BluetoothDevice device) async {
@@ -406,6 +422,7 @@ class PebbleBluetoothConnectionService {
     _activeDevice = null;
     _lastBatteryPercent = null;
     _lastReceivedTds = null;
+    _lastReceivedTdsAt = null;
 
     if (disconnectDevice && deviceToDisconnect != null) {
       try {

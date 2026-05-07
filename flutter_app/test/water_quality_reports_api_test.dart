@@ -81,4 +81,38 @@ void main() {
     expect(secondReport.temperatureCelsius, 25.4);
     expect(secondReport.cr6MgPerL, 0.128);
   });
+
+  test('deletes generated and base reports from the local library', () async {
+    final reportsApi = WaterQualityReportsApi();
+    final generatedReport = await reportsApi.addGeneratedTdsReport(
+      188,
+      testedAt: DateTime(2026, 4, 28, 17),
+      latitude: 37.7694,
+      longitude: -122.4862,
+    );
+
+    expect(
+      (await reportsApi.fetchReports())
+          .any((report) => report.id == generatedReport.id),
+      isTrue,
+    );
+
+    await reportsApi.deleteReport(generatedReport.id);
+
+    expect(
+      (await reportsApi.fetchReports())
+          .any((report) => report.id == generatedReport.id),
+      isFalse,
+    );
+
+    final baseReport = (await reportsApi.fetchReports()).first;
+
+    await reportsApi.deleteReport(baseReport.id);
+
+    expect(
+      (await reportsApi.fetchReports())
+          .any((report) => report.id == baseReport.id),
+      isFalse,
+    );
+  });
 }

@@ -62,4 +62,4 @@ cd flutter_app
 
 The release APK is generated at `flutter_app/build/app/outputs/flutter-apk/app-release.apk`.
 
-Full application development was completed with Codex.
+Full application development was completed with Chatgpt Codex.

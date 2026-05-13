@@ -437,9 +437,9 @@ class _MapSearchResultsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return PebbleGlassCard(
       blurSigma: 12,
-      color: AppColors.glass,
-      boxShadow: AppShadows.card,
-      borderRadius: const BorderRadius.all(Radius.circular(18)),
+      color: AppColors.controlFill,
+      boxShadow: AppShadows.dropdownMenu,
+      borderRadius: const BorderRadius.all(Radius.circular(12)),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: results.isEmpty
           ? Padding(

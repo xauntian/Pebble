@@ -20,10 +20,12 @@ class AskPage extends StatefulWidget {
     super.key,
     required this.snapshot,
     this.aiResponder = const ApiAskAiResponder(),
+    this.onMenuPressed,
   });
 
   final AppSnapshot snapshot;
   final AskAiResponder aiResponder;
+  final VoidCallback? onMenuPressed;
 
   static const List<_QuestionAnswer> _questionAnswers = [
     _QuestionAnswer(
@@ -86,7 +88,7 @@ class _AskPageState extends State<AskPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const PebbleTopBar(),
+              PebbleTopBar(onMenuPressed: widget.onMenuPressed),
               const SizedBox(height: AppSpacing.section),
               Text(
                 'Knowledge of Water',

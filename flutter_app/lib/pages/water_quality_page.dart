@@ -9,6 +9,7 @@ import '../models/water_test_report.dart';
 import '../services/water_quality_reports_api.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
+import '../theme/app_shadows.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 import '../theme/responsive_layout.dart';
@@ -16,23 +17,9 @@ import '../widgets/pebble_glass_card.dart';
 import '../widgets/pill_chip.dart';
 import '../widgets/progress_ring.dart';
 
-const _figmaDatePickerDropShadow = <BoxShadow>[
-  BoxShadow(
-    color: Color(0x1A4C7C09),
-    blurRadius: 5,
-    offset: Offset.zero,
-  ),
-];
-
-const _figmaCalendarDropShadow = <BoxShadow>[
-  BoxShadow(
-    color: Color(0x3D000000),
-    blurRadius: 12.4,
-    offset: Offset.zero,
-  ),
-];
-
-const _dropdownMenuFill = Color(0xCCFFFFFF);
+const _figmaDatePickerDropShadow = AppShadows.control;
+const _figmaCalendarDropShadow = AppShadows.calendarMenu;
+const _dropdownMenuFill = AppColors.controlFill;
 const _uiTransitionDuration = Duration(milliseconds: 500);
 const _calendarCellSize = 38.0;
 const _dropdownTextWidthSlack = 10.0;
@@ -1102,7 +1089,7 @@ class _CalendarPanel extends StatelessWidget {
               const Icon(
                 Icons.chevron_right_rounded,
                 size: 18,
-                color: AppColors.lime,
+                color: AppColors.controlAccent,
               ),
               const Spacer(),
               _CalendarArrowButton(
@@ -1267,7 +1254,7 @@ class _CalendarArrowButton extends StatelessWidget {
       child: Icon(
         icon,
         size: 28,
-        color: AppColors.lime,
+        color: AppColors.controlAccent,
       ),
     );
   }
@@ -1303,7 +1290,7 @@ class _CalendarDayCell extends StatelessWidget {
     final fontSize = selected ? 22.0 : 18.0;
     final fontWeight = selected ? FontWeight.w600 : FontWeight.w400;
     final textColor = hasRecord
-        ? AppColors.lime
+        ? AppColors.controlAccent
         : AppColors.textPrimary.withValues(alpha: 0.24);
 
     final cell = SizedBox(
@@ -1320,7 +1307,7 @@ class _CalendarDayCell extends StatelessWidget {
               width: _calendarCellSize,
               height: _calendarCellSize,
               decoration: BoxDecoration(
-                color: AppColors.lime.withValues(alpha: 0.38),
+                color: AppColors.controlAccent.withValues(alpha: 0.38),
                 shape: BoxShape.circle,
               ),
             ),
@@ -1696,8 +1683,7 @@ class _DeleteReportConfirmationCard extends StatelessWidget {
                           children: [
                             _DeleteConfirmationActionButton(
                               label: 'Cancel',
-                              backgroundColor:
-                                  AppColors.textPrimary.withValues(alpha: 0.05),
+                              backgroundColor: AppColors.controlSubtleFill,
                               foregroundColor: AppColors.textPrimary,
                               onTap: onCancel,
                             ),
@@ -1740,7 +1726,7 @@ class _DeleteConfirmationActionButton extends StatelessWidget {
     required this.backgroundColor,
     required this.foregroundColor,
     required this.onTap,
-    this.boxShadow = const [],
+    this.boxShadow = AppShadows.control,
   });
 
   final String label;
@@ -2068,12 +2054,14 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
                       width: resolvedMenuWidth,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: AppColors.white.withValues(alpha: 0.8),
+                          color: AppColors.controlFill,
                           borderRadius: BorderRadius.circular(12 * _scale),
-                          boxShadow: const [
+                          boxShadow: [
                             BoxShadow(
-                              color: Color(0x1A073433),
-                              blurRadius: 20 * _scale,
+                              color: AppShadows.dropdownMenu.first.color,
+                              blurRadius:
+                                  AppShadows.dropdownMenu.first.blurRadius *
+                                      _scale,
                               offset: Offset.zero,
                             ),
                           ],

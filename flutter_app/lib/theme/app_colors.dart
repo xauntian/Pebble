@@ -21,6 +21,12 @@ class AppColors {
   static const glassBorder = Color(0x33FFFFFF);
   static const glassTint = Color(0x33FFFFFF);
   static const chipGlass = Color(0xB3FFFFFF);
+  static const controlFill = Color(0xCCFFFFFF);
+  static const controlSubtleFill = Color(0x0D132525);
+  static const controlPrimary = lime;
+  static const controlPrimaryText = white;
+  static const controlAccent = lime;
+  static const controlDisabledText = textMuted;
 
   static const ringTrack = Color(0xFFE2F0D8);
   static const navIconActive = white;

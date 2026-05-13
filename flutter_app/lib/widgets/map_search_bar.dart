@@ -96,8 +96,8 @@ class _SearchFieldContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     return PebbleGlassCard(
       blurSigma: 4,
-      color: AppColors.glass,
-      boxShadow: AppShadows.card,
+      color: AppColors.controlFill,
+      boxShadow: AppShadows.control,
       borderRadius: const BorderRadius.all(
         Radius.circular(AppRadius.search),
       ),
@@ -138,9 +138,9 @@ class _MapSearchButton extends StatelessWidget {
         onTap: onTap,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.olive,
+            color: AppColors.controlPrimary,
             borderRadius: BorderRadius.circular(AppRadius.search),
-            boxShadow: AppShadows.card,
+            boxShadow: AppShadows.control,
           ),
           child: const SizedBox(
             width: 68,

@@ -201,7 +201,7 @@ class DeviceStatusCard extends StatelessWidget {
                       children: [
                         const Flexible(
                           child: Text(
-                            "Your’s",
+                            "Your's",
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -313,7 +313,6 @@ class _ConnectedDeviceInfo extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const SizedBox(height: 2),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -322,17 +321,17 @@ class _ConnectedDeviceInfo extends StatelessWidget {
             Flexible(
               child: Text(
                 data.deviceName,
-                style: AppTextStyles.deviceLabel,
+                style: AppTextStyles.deviceLabel.copyWith(height: 1),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 15),
+        const SizedBox(height: 12),
         Text(
           data.statusLabel,
-          style: AppTextStyles.statusLabel,
+          style: AppTextStyles.statusLabel.copyWith(height: 1),
         ),
       ],
     );
@@ -432,7 +431,7 @@ class _DeviceConnectionVisual extends StatelessWidget {
     final assetPath = isConnected
         ? 'assets/figma/device-card-connected.png'
         : 'assets/figma/device-card-unconnected.png';
-    const height = 118.0;
+    const height = 126.0;
 
     return SizedBox(
       width: width,

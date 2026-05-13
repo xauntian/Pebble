@@ -13,7 +13,8 @@ static const char* DEVICE_NAME = "Pebble TestKit";
 static const char* PEBBLE_SERVICE_UUID = "7b7d0001-4f8a-4c28-9f2a-6f0a8f0d1000";
 static const char* PEBBLE_PAYLOAD_UUID = "7b7d0002-4f8a-4c28-9f2a-6f0a8f0d1000";
 
-#define DATA_PIN D5
+// Use the GPIO number directly instead of board pin aliases.
+#define DATA_PIN 6
 #define LED_TYPE WS2812
 #define COLOR_ORDER GRB
 #define NUM_LEDS 16

@@ -39,8 +39,8 @@ class PillChip extends StatelessWidget {
     this.leading,
     this.trailing,
     this.padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-    this.backgroundColor = AppColors.white,
-    this.boxShadow = AppShadows.field,
+    this.backgroundColor = AppColors.controlFill,
+    this.boxShadow = AppShadows.control,
     this.textStyle,
     this.borderRadius = AppRadius.round,
     this.height,
@@ -427,15 +427,9 @@ class _FigmaDropdownOverlay<T> extends StatelessWidget {
                       width: menuWidth,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: AppColors.white.withValues(alpha: 0.8),
+                          color: AppColors.controlFill,
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x1A073433),
-                              blurRadius: 20,
-                              offset: Offset.zero,
-                            ),
-                          ],
+                          boxShadow: AppShadows.dropdownMenu,
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(_dropdownMenuInset),

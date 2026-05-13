@@ -12,6 +12,7 @@ import '../services/ask_ai_responder.dart';
 import '../services/water_quality_reports_api.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
+import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 import '../theme/app_theme.dart';
 
@@ -229,23 +230,16 @@ class _NewTestNoticeCard extends StatelessWidget {
                           children: [
                             _NoticeActionButton(
                               label: 'Cancel',
-                              backgroundColor:
-                                  AppColors.textPrimary.withValues(alpha: 0.05),
+                              backgroundColor: AppColors.controlSubtleFill,
                               foregroundColor: AppColors.textPrimary,
                               onTap: onCancel,
                             ),
                             const SizedBox(width: 10),
                             _NoticeActionButton(
                               label: 'View',
-                              backgroundColor: AppColors.lime,
+                              backgroundColor: AppColors.controlPrimary,
                               foregroundColor: AppColors.white,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x1A4C7C09),
-                                  blurRadius: 10,
-                                  offset: Offset.zero,
-                                ),
-                              ],
+                              boxShadow: AppShadows.control,
                               onTap: onView,
                             ),
                           ],
@@ -269,7 +263,7 @@ class _NoticeActionButton extends StatelessWidget {
     required this.backgroundColor,
     required this.foregroundColor,
     required this.onTap,
-    this.boxShadow = const [],
+    this.boxShadow = AppShadows.control,
   });
 
   final String label;

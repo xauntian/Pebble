@@ -1,41 +1,64 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/water_test_report.dart';
 import '../navigation/app_shell.dart';
 import '../pages/water_quality_page.dart';
+import '../services/ask_ai_responder.dart';
 import '../services/water_quality_reports_api.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
+import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 import '../theme/app_theme.dart';
 
 class PebbleApp extends StatefulWidget {
-  const PebbleApp({super.key});
+  const PebbleApp({
+    super.key,
+    this.askAiResponder = const ApiAskAiResponder(),
+  });
+
+  final AskAiResponder askAiResponder;
 
   @override
   State<PebbleApp> createState() => _PebbleAppState();
 }
 
 class _PebbleAppState extends State<PebbleApp> {
+  static const _systemUiOverlayStyle = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarBrightness: Brightness.light,
+    statusBarIconBrightness: Brightness.dark,
+    systemStatusBarContrastEnforced: false,
+    systemNavigationBarColor: AppColors.background,
+    systemNavigationBarDividerColor: AppColors.background,
+    systemNavigationBarIconBrightness: Brightness.dark,
+    systemNavigationBarContrastEnforced: false,
+  );
+
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: _navigatorKey,
-      debugShowCheckedModeBanner: false,
-      title: 'Pebble',
-      theme: buildAppTheme(),
-      home: const AppShell(),
-      builder: (context, child) {
-        return _NewTestNoticeOverlay(
-          navigatorKey: _navigatorKey,
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _systemUiOverlayStyle,
+      child: MaterialApp(
+        navigatorKey: _navigatorKey,
+        debugShowCheckedModeBanner: false,
+        title: 'Pebble',
+        theme: buildAppTheme(),
+        home: AppShell(askAiResponder: widget.askAiResponder),
+        builder: (context, child) {
+          return _NewTestNoticeOverlay(
+            navigatorKey: _navigatorKey,
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
+      ),
     );
   }
 }
@@ -55,6 +78,7 @@ class _NewTestNoticeOverlay extends StatefulWidget {
 
 class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
   late final StreamSubscription<WaterTestReport> _generatedReportSubscription;
+  final Queue<WaterTestReport> _queuedReports = Queue<WaterTestReport>();
   WaterTestReport? _pendingReport;
 
   @override
@@ -67,7 +91,11 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
       }
 
       setState(() {
-        _pendingReport = report;
+        if (_pendingReport == null) {
+          _pendingReport = report;
+        } else {
+          _queuedReports.add(report);
+        }
       });
     });
   }
@@ -112,12 +140,14 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
 
   void _clearNotice() {
     setState(() {
-      _pendingReport = null;
+      _showNextNotice();
     });
   }
 
   void _openGeneratedReport(WaterTestReport report) {
-    _clearNotice();
+    setState(() {
+      _showNextNotice();
+    });
     widget.navigatorKey.currentState?.push(
       MaterialPageRoute<void>(
         settings: const RouteSettings(name: WaterQualityPage.routeName),
@@ -130,6 +160,11 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
         },
       ),
     );
+  }
+
+  void _showNextNotice() {
+    _pendingReport =
+        _queuedReports.isEmpty ? null : _queuedReports.removeFirst();
   }
 }
 
@@ -151,7 +186,7 @@ class _NewTestNoticeCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: borderRadius,
         child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: AppColors.white.withValues(alpha: 0.62),
@@ -186,31 +221,30 @@ class _NewTestNoticeCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        _NoticeActionButton(
-                          label: 'Cancel',
-                          backgroundColor:
-                              AppColors.textPrimary.withValues(alpha: 0.05),
-                          foregroundColor: AppColors.textPrimary,
-                          onTap: onCancel,
-                        ),
-                        const SizedBox(width: 10),
-                        _NoticeActionButton(
-                          label: 'View',
-                          backgroundColor: AppColors.lime,
-                          foregroundColor: AppColors.white,
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x1A4C7C09),
-                              blurRadius: 10,
-                              offset: Offset.zero,
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _NoticeActionButton(
+                              label: 'Cancel',
+                              backgroundColor: AppColors.controlSubtleFill,
+                              foregroundColor: AppColors.textPrimary,
+                              onTap: onCancel,
+                            ),
+                            const SizedBox(width: 10),
+                            _NoticeActionButton(
+                              label: 'View',
+                              backgroundColor: AppColors.controlPrimary,
+                              foregroundColor: AppColors.white,
+                              boxShadow: AppShadows.control,
+                              onTap: onView,
                             ),
                           ],
-                          onTap: onView,
                         ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
@@ -229,7 +263,7 @@ class _NoticeActionButton extends StatelessWidget {
     required this.backgroundColor,
     required this.foregroundColor,
     required this.onTap,
-    this.boxShadow = const [],
+    this.boxShadow = AppShadows.control,
   });
 
   final String label;

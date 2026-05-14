@@ -27,6 +27,7 @@ flutter:
   assets:
     - assets/figma/
     - assets/figma/nav/
+    - assets/secrets/
   fonts:
     - family: Inter
       fonts:

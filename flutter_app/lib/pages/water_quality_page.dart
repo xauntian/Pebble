@@ -9,6 +9,7 @@ import '../models/water_test_report.dart';
 import '../services/water_quality_reports_api.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
+import '../theme/app_shadows.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 import '../theme/responsive_layout.dart';
@@ -16,26 +17,36 @@ import '../widgets/pebble_glass_card.dart';
 import '../widgets/pill_chip.dart';
 import '../widgets/progress_ring.dart';
 
-const _figmaDatePickerDropShadow = <BoxShadow>[
-  BoxShadow(
-    color: Color(0x1A4C7C09),
-    blurRadius: 5,
-    offset: Offset.zero,
-  ),
-];
-
-const _figmaCalendarDropShadow = <BoxShadow>[
-  BoxShadow(
-    color: Color(0x3D000000),
-    blurRadius: 12.4,
-    offset: Offset.zero,
-  ),
-];
-
-const _dropdownMenuFill = Color(0xCCFFFFFF);
+const _figmaDatePickerDropShadow = AppShadows.control;
+const _figmaCalendarDropShadow = AppShadows.calendarMenu;
+const _dropdownMenuFill = AppColors.controlFill;
 const _uiTransitionDuration = Duration(milliseconds: 500);
 const _calendarCellSize = 38.0;
 const _dropdownTextWidthSlack = 10.0;
+const _dropdownTextHeightBehavior = TextHeightBehavior(
+  applyHeightToFirstAscent: false,
+  applyHeightToLastDescent: false,
+);
+
+TextStyle _scaledDropdownTextStyle(double scale) {
+  return TextStyle(
+    fontFamily: AppTextStyles.fontFamily,
+    fontSize: 10 * scale,
+    fontWeight: FontWeight.w500,
+    height: 1,
+    decoration: TextDecoration.none,
+    color: AppColors.textPrimary,
+  );
+}
+
+StrutStyle _scaledDropdownStrutStyle(double scale) {
+  return StrutStyle(
+    fontFamily: AppTextStyles.fontFamily,
+    fontSize: 10 * scale,
+    height: 1,
+    forceStrutHeight: true,
+  );
+}
 
 class WaterQualityPage extends StatefulWidget {
   WaterQualityPage({
@@ -60,7 +71,6 @@ class WaterQualityPage extends StatefulWidget {
 class _WaterQualityPageState extends State<WaterQualityPage> {
   late Future<List<WaterTestReport>> _reportsFuture;
   late final StreamSubscription<WaterTestReport> _generatedReportSubscription;
-  final Set<String> _deletedReportIds = <String>{};
   String? _selectedLocationId;
   String? _selectedRegionCode;
   String? _selectedReportId;
@@ -76,7 +86,6 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
       }
 
       setState(() {
-        _deletedReportIds.remove(report.id);
         _selectedRegionCode = report.regionCode;
         _selectedLocationId = report.locationId;
         _selectedReportId = report.id;
@@ -112,9 +121,7 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
           );
         }
 
-        final reports = fetchedReports
-            .where((report) => !_deletedReportIds.contains(report.id))
-            .toList(growable: false);
+        final reports = fetchedReports;
         if (reports.isEmpty) {
           return const _WaterQualityPageShell(
             child: Center(
@@ -132,6 +139,8 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
   }
 
   Widget _buildLoadedPage(List<WaterTestReport> reports) {
+    _selectLatestReportIfNeeded(reports);
+
     final locations = _latestLocations(reports);
     final regionCodes = _regionCodes(locations);
     final selectedRegionCode = _resolveRegionCode(locations, regionCodes);
@@ -168,7 +177,7 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
           selectedReports: selectedReports,
           selectedDayReports: selectedDayReports,
           onDeleteSelectedReport: () {
-            _deleteReport(selectedReport, reports);
+            _confirmAndDeleteReport(selectedReport);
           },
         );
       },
@@ -364,13 +373,7 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
     final painter = TextPainter(
       text: TextSpan(
         text: label,
-        style: const TextStyle(
-          fontFamily: AppTextStyles.fontFamily,
-          fontSize: 10 * scale,
-          fontWeight: FontWeight.w500,
-          decoration: TextDecoration.none,
-          color: AppColors.textPrimary,
-        ),
+        style: _scaledDropdownTextStyle(scale),
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
@@ -451,34 +454,101 @@ class _WaterQualityPageState extends State<WaterQualityPage> {
     });
   }
 
-  void _deleteReport(
-    WaterTestReport report,
-    List<WaterTestReport> currentReports,
-  ) {
-    final remainingReports = currentReports
-        .where((candidate) => candidate.id != report.id)
-        .toList(growable: false)
-      ..sort((a, b) => a.testedAt.compareTo(b.testedAt));
-    final sameDayReports = remainingReports
-        .where((candidate) => _isSameReportDay(candidate, report))
-        .toList(growable: false);
-    final sameLocationReports = remainingReports
-        .where((candidate) => candidate.locationId == report.locationId)
-        .toList(growable: false);
-    final fallbackReport = sameDayReports.isNotEmpty
-        ? sameDayReports.last
-        : sameLocationReports.isNotEmpty
-            ? sameLocationReports.last
-            : remainingReports.isNotEmpty
-                ? remainingReports.last
-                : null;
+  void _selectLatestReportIfNeeded(List<WaterTestReport> reports) {
+    if (_selectedReportId != null ||
+        _selectedLocationId != null ||
+        _selectedRegionCode != null) {
+      return;
+    }
+
+    final latestReport = reports.reduce(
+      (latest, report) =>
+          report.testedAt.isAfter(latest.testedAt) ? report : latest,
+    );
+    _selectedRegionCode = latestReport.regionCode;
+    _selectedLocationId = latestReport.locationId;
+    _selectedReportId = latestReport.id;
+  }
+
+  Future<void> _confirmAndDeleteReport(WaterTestReport report) async {
+    final confirmed = await _showDeleteReportConfirmation(context);
+    if (!mounted || !confirmed) {
+      return;
+    }
+
+    await _deleteReport(report);
+  }
+
+  Future<void> _deleteReport(WaterTestReport report) async {
+    final remainingReports = await widget.reportsApi.deleteReport(report.id);
+    if (!mounted) {
+      return;
+    }
+
+    final fallbackReport = _fallbackReportAfterDelete(report, remainingReports);
 
     setState(() {
-      _deletedReportIds.add(report.id);
+      _reportsFuture = Future<List<WaterTestReport>>.value(remainingReports);
       _selectedRegionCode = fallbackReport?.regionCode;
       _selectedLocationId = fallbackReport?.locationId;
       _selectedReportId = fallbackReport?.id;
     });
+  }
+
+  WaterTestReport? _fallbackReportAfterDelete(
+    WaterTestReport deletedReport,
+    List<WaterTestReport> remainingReports,
+  ) {
+    final sortedReports = [...remainingReports]
+      ..sort((a, b) => a.testedAt.compareTo(b.testedAt));
+    final sameDayReports = sortedReports
+        .where((candidate) => _isSameReportDay(candidate, deletedReport))
+        .toList(growable: false);
+    final sameLocationReports = sortedReports
+        .where((candidate) => candidate.locationId == deletedReport.locationId)
+        .toList(growable: false);
+
+    return sameDayReports.isNotEmpty
+        ? sameDayReports.last
+        : sameLocationReports.isNotEmpty
+            ? sameLocationReports.last
+            : sortedReports.isNotEmpty
+                ? sortedReports.last
+                : null;
+  }
+
+  Future<bool> _showDeleteReportConfirmation(BuildContext context) async {
+    final confirmed = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withValues(alpha: 0.2),
+      transitionDuration: const Duration(milliseconds: 160),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Center(
+          child: _DeleteReportConfirmationCard(
+            onCancel: () => Navigator.of(context).pop(false),
+            onDelete: () => Navigator.of(context).pop(true),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curvedAnimation = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+
+        return FadeTransition(
+          opacity: curvedAnimation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1).animate(curvedAnimation),
+            child: child,
+          ),
+        );
+      },
+    );
+
+    return confirmed ?? false;
   }
 
   List<_WaterLocationOption> _latestLocations(List<WaterTestReport> reports) {
@@ -998,7 +1068,7 @@ class _CalendarPanel extends StatelessWidget {
 
     return PebbleGlassCard(
       color: _dropdownMenuFill,
-      blurSigma: 18,
+      blurSigma: 10,
       boxShadow: _figmaCalendarDropShadow,
       padding: const EdgeInsets.fromLTRB(13, 14, 13, 16),
       child: Column(
@@ -1019,7 +1089,7 @@ class _CalendarPanel extends StatelessWidget {
               const Icon(
                 Icons.chevron_right_rounded,
                 size: 18,
-                color: AppColors.lime,
+                color: AppColors.controlAccent,
               ),
               const Spacer(),
               _CalendarArrowButton(
@@ -1184,7 +1254,7 @@ class _CalendarArrowButton extends StatelessWidget {
       child: Icon(
         icon,
         size: 28,
-        color: AppColors.lime,
+        color: AppColors.controlAccent,
       ),
     );
   }
@@ -1220,7 +1290,7 @@ class _CalendarDayCell extends StatelessWidget {
     final fontSize = selected ? 22.0 : 18.0;
     final fontWeight = selected ? FontWeight.w600 : FontWeight.w400;
     final textColor = hasRecord
-        ? AppColors.lime
+        ? AppColors.controlAccent
         : AppColors.textPrimary.withValues(alpha: 0.24);
 
     final cell = SizedBox(
@@ -1237,7 +1307,7 @@ class _CalendarDayCell extends StatelessWidget {
               width: _calendarCellSize,
               height: _calendarCellSize,
               decoration: BoxDecoration(
-                color: AppColors.lime.withValues(alpha: 0.38),
+                color: AppColors.controlAccent.withValues(alpha: 0.38),
                 shape: BoxShape.circle,
               ),
             ),
@@ -1551,6 +1621,153 @@ class _DeleteReportButton extends StatelessWidget {
   }
 }
 
+class _DeleteReportConfirmationCard extends StatelessWidget {
+  const _DeleteReportConfirmationCard({
+    required this.onCancel,
+    required this.onDelete,
+  });
+
+  final VoidCallback onCancel;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(20);
+
+    return Material(
+      type: MaterialType.transparency,
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.white.withValues(alpha: 0.62),
+              borderRadius: borderRadius,
+              border: Border.all(
+                color: AppColors.white.withValues(alpha: 0.4),
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1A4C7C09),
+                  blurRadius: 18,
+                  offset: Offset.zero,
+                ),
+              ],
+            ),
+            child: SizedBox(
+              width: 239,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Delete this test result?',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontFamily: AppTextStyles.fontFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _DeleteConfirmationActionButton(
+                              label: 'Cancel',
+                              backgroundColor: AppColors.controlSubtleFill,
+                              foregroundColor: AppColors.textPrimary,
+                              onTap: onCancel,
+                            ),
+                            const SizedBox(width: 10),
+                            _DeleteConfirmationActionButton(
+                              key: const ValueKey(
+                                'water-confirm-delete-report',
+                              ),
+                              label: 'Delete',
+                              backgroundColor: const Color(0xCCFF3B30),
+                              foregroundColor: AppColors.white,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x1AFF0000),
+                                  blurRadius: 10,
+                                  offset: Offset.zero,
+                                ),
+                              ],
+                              onTap: onDelete,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeleteConfirmationActionButton extends StatelessWidget {
+  const _DeleteConfirmationActionButton({
+    super.key,
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.onTap,
+    this.boxShadow = AppShadows.control,
+  });
+
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final VoidCallback onTap;
+  final List<BoxShadow> boxShadow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            boxShadow: boxShadow,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                fontFamily: AppTextStyles.fontFamily,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: foregroundColor,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _WaterQualityFilterDropdown<T> extends StatefulWidget {
   const _WaterQualityFilterDropdown({
     required this.value,
@@ -1837,12 +2054,14 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
                       width: resolvedMenuWidth,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: AppColors.white.withValues(alpha: 0.8),
+                          color: AppColors.controlFill,
                           borderRadius: BorderRadius.circular(12 * _scale),
-                          boxShadow: const [
+                          boxShadow: [
                             BoxShadow(
-                              color: Color(0x1A073433),
-                              blurRadius: 20 * _scale,
+                              color: AppShadows.dropdownMenu.first.color,
+                              blurRadius:
+                                  AppShadows.dropdownMenu.first.blurRadius *
+                                      _scale,
                               offset: Offset.zero,
                             ),
                           ],
@@ -1939,13 +2158,7 @@ class _ScaledDropdownOverlay<T> extends StatelessWidget {
     final painter = TextPainter(
       text: TextSpan(
         text: label,
-        style: TextStyle(
-          fontFamily: AppTextStyles.fontFamily,
-          fontSize: 10 * _scale,
-          fontWeight: FontWeight.w500,
-          decoration: TextDecoration.none,
-          color: AppColors.textPrimary,
-        ),
+        style: _scaledDropdownTextStyle(_scale),
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
@@ -2017,23 +2230,20 @@ class _ScaledDropdownMenuItem<T> extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(
             8 * scale,
-            4 * scale,
+            0,
             10 * scale,
-            4 * scale,
+            0,
           ),
           child: Align(
-            alignment: Alignment.centerRight,
+            alignment: Alignment.center,
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: AppTextStyles.fontFamily,
-                fontSize: 10 * scale,
-                fontWeight: FontWeight.w500,
-                decoration: TextDecoration.none,
-                color: AppColors.textPrimary,
-              ),
+              textAlign: TextAlign.center,
+              textHeightBehavior: _dropdownTextHeightBehavior,
+              strutStyle: _scaledDropdownStrutStyle(scale),
+              style: _scaledDropdownTextStyle(scale),
             ),
           ),
         ),
@@ -2063,18 +2273,16 @@ class _ScaledDropdownPillChip extends StatelessWidget {
       labelWidth: null,
       padding: EdgeInsets.fromLTRB(
         8 * scale,
-        4 * scale,
+        0,
         10 * scale,
-        4 * scale,
+        0,
       ),
       borderRadius: AppRadius.pill,
-      textStyle: TextStyle(
-        fontFamily: AppTextStyles.fontFamily,
-        fontSize: 10 * scale,
-        fontWeight: FontWeight.w500,
-        decoration: TextDecoration.none,
-        color: AppColors.textPrimary,
-      ),
+      textStyle: _scaledDropdownTextStyle(scale),
+      labelAlignment: Alignment.center,
+      textAlign: TextAlign.center,
+      textHeightBehavior: _dropdownTextHeightBehavior,
+      strutStyle: _scaledDropdownStrutStyle(scale),
       shrinkLabel: shrinkLabel,
       leading: showIcon
           ? Icon(

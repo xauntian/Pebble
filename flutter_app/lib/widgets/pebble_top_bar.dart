@@ -11,17 +11,19 @@ class PebbleTopBar extends StatelessWidget {
     this.showDate = false,
     this.dateLabel = 'Jun 10, 2024',
     this.avatarLabel = 'YT',
+    this.onMenuPressed,
   });
 
   final bool showDate;
   final String dateLabel;
   final String avatarLabel;
+  final VoidCallback? onMenuPressed;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const _MenuButton(),
+        _MenuButton(onPressed: onMenuPressed),
         if (showDate) ...[
           const Spacer(),
           PillChip(
@@ -42,14 +44,28 @@ class PebbleTopBar extends StatelessWidget {
 }
 
 class _MenuButton extends StatelessWidget {
-  const _MenuButton();
+  const _MenuButton({this.onPressed});
+
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return const Icon(
-      Icons.menu_rounded,
-      size: 29,
-      color: AppColors.textPrimary,
+    return Semantics(
+      button: true,
+      label: 'Open menu',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: const SizedBox(
+          width: 29,
+          height: 29,
+          child: Icon(
+            Icons.menu_rounded,
+            size: 29,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ),
     );
   }
 }

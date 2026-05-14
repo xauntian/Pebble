@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:water_quality_companion/app/pebble_app.dart';
+import 'package:water_quality_companion/services/ask_ai_responder.dart';
 import 'package:water_quality_companion/services/water_quality_reports_api.dart';
 import 'package:water_quality_companion/theme/app_colors.dart';
+
+Future<void> _pumpPebbleApp(WidgetTester tester) {
+  return tester.pumpWidget(
+    const PebbleApp(askAiResponder: LocalAskAiResponder()),
+  );
+}
 
 void main() {
   testWidgets('renders the three core pages and switches between them',
@@ -13,7 +20,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('My Health Test'), findsOneWidget);
@@ -52,7 +59,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -68,7 +75,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('nav-map')));
@@ -108,7 +115,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Daly City, CA'));
@@ -132,7 +139,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Water Quality'));
@@ -269,12 +276,14 @@ void main() {
 
   testWidgets('selects and deletes same-day water test times',
       (WidgetTester tester) async {
+    WaterQualityReportsApi.shared.clearGeneratedReportsForTesting();
+    addTearDown(WaterQualityReportsApi.shared.clearGeneratedReportsForTesting);
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 420 / 160;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Water Quality'));
@@ -294,6 +303,20 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('water-delete-report')));
     await tester.pumpAndSettle();
 
+    expect(find.text('Delete this test result?'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('water-confirm-delete-report')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('10:24:00'), findsNothing);
+    expect(find.text('12:20:20'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Water Quality'));
+    await tester.pumpAndSettle();
+    await _selectSfAnimalPark(tester);
+
     expect(find.text('10:24:00'), findsNothing);
     expect(find.text('12:20:20'), findsOneWidget);
   });
@@ -305,7 +328,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('nav-ask')));
@@ -343,7 +366,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('nav-ask')));
@@ -377,7 +400,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('nav-ask')));
@@ -403,7 +426,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('nav-ask')));
@@ -436,7 +459,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await WaterQualityReportsApi.shared.addGeneratedTdsReport(
@@ -445,7 +468,7 @@ void main() {
       latitude: 37.7694,
       longitude: -122.4862,
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('You have a new test result'), findsOneWidget);
 
@@ -465,7 +488,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PebbleApp());
+    await _pumpPebbleApp(tester);
     await tester.pumpAndSettle();
 
     await WaterQualityReportsApi.shared.addGeneratedTdsReport(
@@ -474,7 +497,7 @@ void main() {
       latitude: 37.7694,
       longitude: -122.4862,
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('You have a new test result'), findsOneWidget);
     expect(find.text('View'), findsOneWidget);

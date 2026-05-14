@@ -11,12 +11,23 @@ const double _dropdownMenuInset = 3;
 const double _dropdownShadowOutset = 20;
 const double _dropdownPillIconSize = 10;
 const double _dropdownPillIconGap = 5;
-const EdgeInsets _dropdownPillPadding = EdgeInsets.fromLTRB(8, 4, 10, 4);
+const EdgeInsets _dropdownPillPadding = EdgeInsets.fromLTRB(8, 0, 10, 0);
 const _dropdownTransitionDuration = Duration(milliseconds: 500);
+const _dropdownTextHeightBehavior = TextHeightBehavior(
+  applyHeightToFirstAscent: false,
+  applyHeightToLastDescent: false,
+);
+const _dropdownPillStrutStyle = StrutStyle(
+  fontFamily: AppTextStyles.fontFamily,
+  fontSize: 10,
+  height: 1,
+  forceStrutHeight: true,
+);
 const _dropdownPillTextStyle = TextStyle(
   fontFamily: AppTextStyles.fontFamily,
   fontSize: 10,
   fontWeight: FontWeight.w500,
+  height: 1,
   decoration: TextDecoration.none,
   color: AppColors.textPrimary,
 );
@@ -28,13 +39,17 @@ class PillChip extends StatelessWidget {
     this.leading,
     this.trailing,
     this.padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-    this.backgroundColor = AppColors.white,
-    this.boxShadow = AppShadows.field,
+    this.backgroundColor = AppColors.controlFill,
+    this.boxShadow = AppShadows.control,
     this.textStyle,
     this.borderRadius = AppRadius.round,
     this.height,
     this.labelWidth,
     this.shrinkLabel = false,
+    this.labelAlignment = Alignment.centerLeft,
+    this.textAlign = TextAlign.start,
+    this.textHeightBehavior,
+    this.strutStyle,
   });
 
   final String label;
@@ -48,6 +63,10 @@ class PillChip extends StatelessWidget {
   final double? height;
   final double? labelWidth;
   final bool shrinkLabel;
+  final AlignmentGeometry labelAlignment;
+  final TextAlign textAlign;
+  final TextHeightBehavior? textHeightBehavior;
+  final StrutStyle? strutStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -72,6 +91,9 @@ class PillChip extends StatelessWidget {
                   overflow: shrinkLabel
                       ? TextOverflow.visible
                       : TextOverflow.ellipsis,
+                  textAlign: textAlign,
+                  textHeightBehavior: textHeightBehavior,
+                  strutStyle: strutStyle,
                   style: effectiveTextStyle,
                 );
 
@@ -79,7 +101,7 @@ class PillChip extends StatelessWidget {
                   width: width.isFinite ? width : null,
                   child: shrinkLabel
                       ? FittedBox(
-                          alignment: Alignment.centerLeft,
+                          alignment: labelAlignment,
                           fit: BoxFit.scaleDown,
                           child: labelText,
                         )
@@ -135,6 +157,10 @@ class DropdownPillChip extends StatelessWidget {
       borderRadius: AppRadius.pill,
       labelWidth: labelWidth,
       textStyle: _dropdownPillTextStyle,
+      labelAlignment: Alignment.center,
+      textAlign: TextAlign.center,
+      textHeightBehavior: _dropdownTextHeightBehavior,
+      strutStyle: _dropdownPillStrutStyle,
       leading: showIcon
           ? const Icon(
               Icons.keyboard_arrow_down_rounded,
@@ -401,15 +427,9 @@ class _FigmaDropdownOverlay<T> extends StatelessWidget {
                       width: menuWidth,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: AppColors.white.withValues(alpha: 0.8),
+                          color: AppColors.controlFill,
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x1A073433),
-                              blurRadius: 20,
-                              offset: Offset.zero,
-                            ),
-                          ],
+                          boxShadow: AppShadows.dropdownMenu,
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(_dropdownMenuInset),
@@ -553,13 +573,16 @@ class _FigmaDropdownMenuItem<T> extends StatelessWidget {
         width: double.infinity,
         height: 20,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+          padding: const EdgeInsets.fromLTRB(8, 0, 10, 0),
           child: Align(
-            alignment: Alignment.centerRight,
+            alignment: Alignment.center,
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              textHeightBehavior: _dropdownTextHeightBehavior,
+              strutStyle: _dropdownPillStrutStyle,
               style: _dropdownPillTextStyle,
             ),
           ),

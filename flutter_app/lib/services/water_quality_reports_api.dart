@@ -20,11 +20,13 @@ class WaterQualityReportsApi {
         _baseUrl = baseUrl.trim();
 
   static final shared = WaterQualityReportsApi();
+  static const _fallbackRegionCode = 'SF, CA';
 
   final http.Client _client;
   final String _baseUrl;
   final String reportsPath;
   final List<WaterTestReport> _generatedReports = <WaterTestReport>[];
+  final Set<String> _deletedReportIds = <String>{};
   final StreamController<List<WaterTestReport>> _reportsChangedController =
       StreamController<List<WaterTestReport>>.broadcast();
   final StreamController<WaterTestReport> _generatedReportController =
@@ -39,13 +41,14 @@ class WaterQualityReportsApi {
 
   void clearGeneratedReportsForTesting() {
     _generatedReports.clear();
+    _deletedReportIds.clear();
   }
 
   Future<List<WaterTestReport>> fetchReports() async {
     final baseReports = await _fetchBaseReports();
     _latestBaseReports = baseReports;
 
-    return _mergeGeneratedReports(baseReports);
+    return _mergeReports(baseReports);
   }
 
   Future<WaterTestReport> addGeneratedTdsReport(
@@ -57,27 +60,42 @@ class WaterQualityReportsApi {
     final gps = latitude != null && longitude != null
         ? _GpsSnapshot(latitude: latitude, longitude: longitude)
         : await _currentGpsSnapshot();
+    final baseReports = _latestBaseReports ?? SfWaterTestReports.all;
     final report = _generatedReportFromTds(
       tds: tds,
       testedAt: testedAt ?? DateTime.now(),
       gps: gps,
+      baseReports: baseReports,
     );
+
+    await _pushGeneratedReport(report);
 
     _generatedReports
       ..removeWhere((existingReport) => existingReport.id == report.id)
       ..add(report);
+    _deletedReportIds.remove(report.id);
 
-    final reports = _mergeGeneratedReports(
-      _latestBaseReports ?? SfWaterTestReports.all,
-    );
-    if (!_reportsChangedController.isClosed) {
-      _reportsChangedController.add(reports);
-    }
+    final reports = _mergeReports(baseReports);
+    _emitReportsChanged(reports);
     if (!_generatedReportController.isClosed) {
       _generatedReportController.add(report);
     }
 
     return report;
+  }
+
+  Future<List<WaterTestReport>> deleteReport(String reportId) async {
+    await _deleteRemoteReport(reportId);
+
+    final baseReports = _latestBaseReports ?? await _fetchBaseReports();
+    _latestBaseReports = baseReports;
+    _generatedReports.removeWhere((report) => report.id == reportId);
+    _deletedReportIds.add(reportId);
+
+    final reports = _mergeReports(baseReports);
+    _emitReportsChanged(reports);
+
+    return reports;
   }
 
   Future<List<WaterTestReport>> _fetchBaseReports() async {
@@ -106,18 +124,63 @@ class WaterQualityReportsApi {
     }
   }
 
-  List<WaterTestReport> _mergeGeneratedReports(
+  List<WaterTestReport> _mergeReports(
     List<WaterTestReport> baseReports,
   ) {
-    if (_generatedReports.isEmpty) {
+    if (_generatedReports.isEmpty && _deletedReportIds.isEmpty) {
       return List<WaterTestReport>.unmodifiable(baseReports);
     }
 
     final generatedIds = _generatedReports.map((report) => report.id).toSet();
     return List<WaterTestReport>.unmodifiable([
-      ...baseReports.where((report) => !generatedIds.contains(report.id)),
-      ..._generatedReports,
+      ...baseReports.where(
+        (report) =>
+            !generatedIds.contains(report.id) &&
+            !_deletedReportIds.contains(report.id),
+      ),
+      ..._generatedReports.where(
+        (report) => !_deletedReportIds.contains(report.id),
+      ),
     ]);
+  }
+
+  void _emitReportsChanged(List<WaterTestReport> reports) {
+    if (!_reportsChangedController.isClosed) {
+      _reportsChangedController.add(reports);
+    }
+  }
+
+  Future<void> _pushGeneratedReport(WaterTestReport report) async {
+    if (_baseUrl.isEmpty) {
+      return;
+    }
+
+    try {
+      await _client
+          .post(
+            _reportsUri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(report.toJson()),
+          )
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Keep the result in the local in-memory library when the remote API
+      // is unavailable.
+    }
+  }
+
+  Future<void> _deleteRemoteReport(String reportId) async {
+    if (_baseUrl.isEmpty) {
+      return;
+    }
+
+    try {
+      await _client
+          .delete(_reportUri(reportId))
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Local deletion state keeps the UI correct even without a remote API.
+    }
   }
 
   Future<_GpsSnapshot> _currentGpsSnapshot() async {
@@ -170,6 +233,7 @@ class WaterQualityReportsApi {
     required int tds,
     required DateTime testedAt,
     required _GpsSnapshot gps,
+    required List<WaterTestReport> baseReports,
   }) {
     final tdsValue = tds.clamp(0, 2000).toInt();
     final latitude = _round(gps.latitude, 6);
@@ -179,7 +243,7 @@ class WaterQualityReportsApi {
         '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}';
     final locationName = gps.isFallback ? 'CCA' : 'Current GPS';
     final specificLocation = gps.isFallback ? 'CCA' : coordinateLabel;
-    final regionCode = gps.isFallback ? 'SF, CA' : 'GPS';
+    final regionCode = _regionCodeForGps(gps, baseReports);
     final derivedMetrics = _WaterMetricsFromTds(tdsValue);
 
     return WaterTestReport(
@@ -200,6 +264,42 @@ class WaterQualityReportsApi {
     );
   }
 
+  String _regionCodeForGps(
+    _GpsSnapshot gps,
+    List<WaterTestReport> baseReports,
+  ) {
+    if (gps.isFallback) {
+      return _fallbackRegionCode;
+    }
+
+    final nearestReport = _nearestReportTo(gps, baseReports);
+
+    return nearestReport?.regionCode ?? _fallbackRegionCode;
+  }
+
+  WaterTestReport? _nearestReportTo(
+    _GpsSnapshot gps,
+    List<WaterTestReport> reports,
+  ) {
+    WaterTestReport? nearestReport;
+    var nearestDistanceMeters = double.infinity;
+
+    for (final report in reports) {
+      final distanceMeters = _distanceMeters(
+        gps.latitude,
+        gps.longitude,
+        report.latitude,
+        report.longitude,
+      );
+      if (distanceMeters < nearestDistanceMeters) {
+        nearestDistanceMeters = distanceMeters;
+        nearestReport = report;
+      }
+    }
+
+    return nearestReport;
+  }
+
   Uri get _reportsUri {
     final baseUri = Uri.parse(_baseUrl);
     final normalizedPath =
@@ -209,6 +309,17 @@ class WaterQualityReportsApi {
       pathSegments: [
         ...baseUri.pathSegments.where((segment) => segment.isNotEmpty),
         ...normalizedPath.split('/').where((segment) => segment.isNotEmpty),
+      ],
+    );
+  }
+
+  Uri _reportUri(String reportId) {
+    final reportsUri = _reportsUri;
+
+    return reportsUri.replace(
+      pathSegments: [
+        ...reportsUri.pathSegments.where((segment) => segment.isNotEmpty),
+        reportId,
       ],
     );
   }
@@ -249,6 +360,29 @@ class WaterQualityReportsApi {
     final factor = math.pow(10, fractionDigits).toDouble();
     return (value * factor).round() / factor;
   }
+
+  double _distanceMeters(
+    double startLatitude,
+    double startLongitude,
+    double endLatitude,
+    double endLongitude,
+  ) {
+    const earthRadiusMeters = 6371000.0;
+    final deltaLatitude = _degreesToRadians(endLatitude - startLatitude);
+    final deltaLongitude = _degreesToRadians(endLongitude - startLongitude);
+    final startLatitudeRadians = _degreesToRadians(startLatitude);
+    final endLatitudeRadians = _degreesToRadians(endLatitude);
+    final haversine = math.pow(math.sin(deltaLatitude / 2), 2) +
+        math.cos(startLatitudeRadians) *
+            math.cos(endLatitudeRadians) *
+            math.pow(math.sin(deltaLongitude / 2), 2);
+
+    return 2 *
+        earthRadiusMeters *
+        math.asin(math.min(1, math.sqrt(haversine).toDouble()));
+  }
+
+  double _degreesToRadians(double degrees) => degrees * math.pi / 180;
 
   String _formatDateLabel(DateTime date) {
     const months = [

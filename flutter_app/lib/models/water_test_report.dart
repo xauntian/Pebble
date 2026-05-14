@@ -63,6 +63,25 @@ class WaterTestReport {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'locationId': locationId,
+      'locationName': locationName,
+      'specificLocation': specificLocation,
+      'regionCode': regionCode,
+      'latitude': latitude,
+      'longitude': longitude,
+      'testedAtIso8601': testedAtIso8601,
+      'testedAtLabel': testedAtLabel,
+      'score': score,
+      'tds': tds,
+      'ph': ph,
+      'temperatureCelsius': temperatureCelsius,
+      'cr6MgPerL': cr6MgPerL,
+    };
+  }
+
   final String id;
   final String locationId;
   final String locationName;

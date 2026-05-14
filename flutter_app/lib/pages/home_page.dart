@@ -18,9 +18,11 @@ class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
     required this.snapshot,
+    this.onMenuPressed,
   });
 
   final AppSnapshot snapshot;
+  final VoidCallback? onMenuPressed;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -129,6 +131,7 @@ class _HomePageState extends State<HomePage> {
                   PebbleTopBar(
                     showDate: true,
                     dateLabel: latestReport.testedAtLabel,
+                    onMenuPressed: widget.onMenuPressed,
                   ),
                   const SizedBox(height: AppSpacing.section),
                   Text('My Health Test', style: textTheme.headlineLarge),

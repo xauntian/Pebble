@@ -742,6 +742,7 @@ class _DoneButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
+        key: const ValueKey('ai-search-done'),
         height: 37 * scale,
         padding: EdgeInsets.symmetric(horizontal: 12 * scale),
         decoration: _aiSearchActionButtonDecoration(radius: 8 * scale),

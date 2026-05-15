@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/sf_water_test_reports.dart';
@@ -20,7 +19,12 @@ class WaterQualityReportsApi {
         _baseUrl = baseUrl.trim();
 
   static final shared = WaterQualityReportsApi();
-  static const _fallbackRegionCode = 'SF, CA';
+  static const generatedReportLocationId = 'cca-sf';
+  static const generatedReportLocationName = 'CCA';
+  static const generatedReportSpecificLocation = 'CCA, SF';
+  static const generatedReportRegionCode = 'CCA, SF';
+  static const generatedReportLatitude = 37.7749;
+  static const generatedReportLongitude = -122.4194;
 
   final http.Client _client;
   final String _baseUrl;
@@ -57,15 +61,10 @@ class WaterQualityReportsApi {
     double? latitude,
     double? longitude,
   }) async {
-    final gps = latitude != null && longitude != null
-        ? _GpsSnapshot(latitude: latitude, longitude: longitude)
-        : await _currentGpsSnapshot();
     final baseReports = _latestBaseReports ?? SfWaterTestReports.all;
     final report = _generatedReportFromTds(
       tds: tds,
       testedAt: testedAt ?? DateTime.now(),
-      gps: gps,
-      baseReports: baseReports,
     );
 
     await _pushGeneratedReport(report);
@@ -183,77 +182,21 @@ class WaterQualityReportsApi {
     }
   }
 
-  Future<_GpsSnapshot> _currentGpsSnapshot() async {
-    try {
-      var permission = await Geolocator.checkPermission().timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => LocationPermission.denied,
-      );
-
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission().timeout(
-          const Duration(seconds: 8),
-          onTimeout: () => LocationPermission.denied,
-        );
-      }
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever ||
-          permission == LocationPermission.unableToDetermine) {
-        return _GpsSnapshot.fallback();
-      }
-
-      final lastKnownPosition = await Geolocator.getLastKnownPosition().timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => null,
-      );
-
-      try {
-        final currentPosition = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 6),
-          ),
-        ).timeout(const Duration(seconds: 7));
-
-        return _GpsSnapshot.fromPosition(currentPosition);
-      } catch (_) {
-        if (lastKnownPosition != null) {
-          return _GpsSnapshot.fromPosition(lastKnownPosition);
-        }
-      }
-    } catch (_) {
-      return _GpsSnapshot.fallback();
-    }
-
-    return _GpsSnapshot.fallback();
-  }
-
   WaterTestReport _generatedReportFromTds({
     required int tds,
     required DateTime testedAt,
-    required _GpsSnapshot gps,
-    required List<WaterTestReport> baseReports,
   }) {
     final tdsValue = tds.clamp(0, 2000).toInt();
-    final latitude = _round(gps.latitude, 6);
-    final longitude = _round(gps.longitude, 6);
-    final locationId = 'current-gps-${_coordinateSlug(latitude, longitude)}';
-    final coordinateLabel =
-        '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}';
-    final locationName = gps.isFallback ? 'CCA' : 'Current GPS';
-    final specificLocation = gps.isFallback ? 'CCA' : coordinateLabel;
-    final regionCode = _regionCodeForGps(gps, baseReports);
     final derivedMetrics = _WaterMetricsFromTds(tdsValue);
 
     return WaterTestReport(
-      id: 'gps-${testedAt.microsecondsSinceEpoch}-$tdsValue',
-      locationId: locationId,
-      locationName: locationName,
-      specificLocation: specificLocation,
-      regionCode: regionCode,
-      latitude: latitude,
-      longitude: longitude,
+      id: 'cca-sf-${testedAt.microsecondsSinceEpoch}-$tdsValue',
+      locationId: generatedReportLocationId,
+      locationName: generatedReportLocationName,
+      specificLocation: generatedReportSpecificLocation,
+      regionCode: generatedReportRegionCode,
+      latitude: generatedReportLatitude,
+      longitude: generatedReportLongitude,
       testedAtIso8601: testedAt.toIso8601String(),
       testedAtLabel: _formatDateLabel(testedAt),
       score: derivedMetrics.score,
@@ -262,42 +205,6 @@ class WaterQualityReportsApi {
       temperatureCelsius: derivedMetrics.temperatureCelsius,
       cr6MgPerL: derivedMetrics.cr6MgPerL,
     );
-  }
-
-  String _regionCodeForGps(
-    _GpsSnapshot gps,
-    List<WaterTestReport> baseReports,
-  ) {
-    if (gps.isFallback) {
-      return _fallbackRegionCode;
-    }
-
-    final nearestReport = _nearestReportTo(gps, baseReports);
-
-    return nearestReport?.regionCode ?? _fallbackRegionCode;
-  }
-
-  WaterTestReport? _nearestReportTo(
-    _GpsSnapshot gps,
-    List<WaterTestReport> reports,
-  ) {
-    WaterTestReport? nearestReport;
-    var nearestDistanceMeters = double.infinity;
-
-    for (final report in reports) {
-      final distanceMeters = _distanceMeters(
-        gps.latitude,
-        gps.longitude,
-        report.latitude,
-        report.longitude,
-      );
-      if (distanceMeters < nearestDistanceMeters) {
-        nearestDistanceMeters = distanceMeters;
-        nearestReport = report;
-      }
-    }
-
-    return nearestReport;
   }
 
   Uri get _reportsUri {
@@ -350,40 +257,6 @@ class WaterQualityReportsApi {
     );
   }
 
-  String _coordinateSlug(double latitude, double longitude) {
-    return '${latitude.toStringAsFixed(4)}-${longitude.toStringAsFixed(4)}'
-        .replaceAll('-', 'm')
-        .replaceAll('.', 'p');
-  }
-
-  double _round(double value, int fractionDigits) {
-    final factor = math.pow(10, fractionDigits).toDouble();
-    return (value * factor).round() / factor;
-  }
-
-  double _distanceMeters(
-    double startLatitude,
-    double startLongitude,
-    double endLatitude,
-    double endLongitude,
-  ) {
-    const earthRadiusMeters = 6371000.0;
-    final deltaLatitude = _degreesToRadians(endLatitude - startLatitude);
-    final deltaLongitude = _degreesToRadians(endLongitude - startLongitude);
-    final startLatitudeRadians = _degreesToRadians(startLatitude);
-    final endLatitudeRadians = _degreesToRadians(endLatitude);
-    final haversine = math.pow(math.sin(deltaLatitude / 2), 2) +
-        math.cos(startLatitudeRadians) *
-            math.cos(endLatitudeRadians) *
-            math.pow(math.sin(deltaLongitude / 2), 2);
-
-    return 2 *
-        earthRadiusMeters *
-        math.asin(math.min(1, math.sqrt(haversine).toDouble()));
-  }
-
-  double _degreesToRadians(double degrees) => degrees * math.pi / 180;
-
   String _formatDateLabel(DateTime date) {
     const months = [
       'Jan',
@@ -427,31 +300,4 @@ class _WaterMetricsFromTds {
     final factor = math.pow(10, fractionDigits).toDouble();
     return (value * factor).round() / factor;
   }
-}
-
-class _GpsSnapshot {
-  const _GpsSnapshot({
-    required this.latitude,
-    required this.longitude,
-    this.isFallback = false,
-  });
-
-  factory _GpsSnapshot.fromPosition(Position position) {
-    return _GpsSnapshot(
-      latitude: position.latitude,
-      longitude: position.longitude,
-    );
-  }
-
-  factory _GpsSnapshot.fallback() {
-    return const _GpsSnapshot(
-      latitude: 37.7749,
-      longitude: -122.4194,
-      isFallback: true,
-    );
-  }
-
-  final double latitude;
-  final double longitude;
-  final bool isFallback;
 }

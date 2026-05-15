@@ -49,7 +49,7 @@ class _PebbleAppState extends State<PebbleApp> {
       child: MaterialApp(
         navigatorKey: _navigatorKey,
         debugShowCheckedModeBanner: false,
-        title: 'Pebble',
+        title: 'pebble',
         theme: buildAppTheme(),
         home: AppShell(askAiResponder: widget.askAiResponder),
         builder: (context, child) {
@@ -80,6 +80,7 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
   late final StreamSubscription<WaterTestReport> _generatedReportSubscription;
   final Queue<WaterTestReport> _queuedReports = Queue<WaterTestReport>();
   WaterTestReport? _pendingReport;
+  bool _isOpeningReport = false;
 
   @override
   void initState() {
@@ -96,6 +97,7 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
         } else {
           _queuedReports.add(report);
         }
+        _isOpeningReport = false;
       });
     });
   }
@@ -140,15 +142,32 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
 
   void _clearNotice() {
     setState(() {
+      _isOpeningReport = false;
       _showNextNotice();
     });
   }
 
   void _openGeneratedReport(WaterTestReport report) {
+    if (_isOpeningReport) {
+      return;
+    }
+
     setState(() {
-      _showNextNotice();
+      _isOpeningReport = true;
+      _pendingReport = null;
     });
-    widget.navigatorKey.currentState?.push(
+
+    final navigator = widget.navigatorKey.currentState;
+    if (navigator == null) {
+      setState(() {
+        _isOpeningReport = false;
+        _showNextNotice();
+      });
+      return;
+    }
+
+    navigator
+        .push(
       MaterialPageRoute<void>(
         settings: const RouteSettings(name: WaterQualityPage.routeName),
         builder: (context) {
@@ -159,7 +178,17 @@ class _NewTestNoticeOverlayState extends State<_NewTestNoticeOverlay> {
           );
         },
       ),
-    );
+    )
+        .whenComplete(() {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isOpeningReport = false;
+        _showNextNotice();
+      });
+    });
   }
 
   void _showNextNotice() {

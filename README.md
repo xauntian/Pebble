@@ -9,6 +9,16 @@ Pebble is a Flutter mobile prototype for a water-quality companion app. The main
 - `Water Quality`: report detail page with region and location filters, a region-aware calendar picker, measurement cards, score visualization, and test history.
 - `Ask`: water knowledge Q&A plus AI Search with suggestion chips, typed input, voice prompt state, local response handling, and Done/reset behavior.
 - Shared UI: glass cards, pill chips, animated dropdowns, progress rings, top bar, bottom navigation, responsive layout helpers, and local Figma-derived assets.
+- Device-generated water reports from the Pebble hardware are saved under `CCA, SF` so every pushed TDS result appears in the same report location.
+
+## Hardware Data Flow
+
+- The Arduino Nano ESP32 bridge hosts the `Pebble-TDS` WiFi access point and accepts one TDS submission at a time on `POST /tds`.
+- Web submissions include `tds_timestamp` in seconds. The Arduino rejects another TDS report with the same timestamp so only one report can be generated per second.
+- After accepting a TDS value, the Arduino publishes the same BLE payload five times with the same `tds_timestamp` at short intervals. This makes phone-side ingestion more tolerant of missed BLE notifications.
+- The Flutter app keeps a small cache of processed TDS timestamps. If a repeated BLE payload was already handled, the app ignores it; if the timestamp has not been seen, the app generates one new water-quality report.
+- Generated reports are always routed to `CCA, SF`, regardless of submitted GPS or test origin.
+- The LED ring flashes yellow for the active test window, then displays the TDS-derived result color briefly before clearing.
 
 ## Generated Change Summary
 
@@ -35,6 +45,7 @@ Pebble is a Flutter mobile prototype for a water-quality companion app. The main
 - `flutter_app/lib/services/`: local AI response and water report service abstractions.
 - `flutter_app/lib/theme/`: colors, spacing, radius, shadows, typography, theme setup, and responsive layout helpers.
 - `flutter_app/assets/`: local Figma-derived assets and fonts.
+- `arduino/pebble_esp32_bridge/`: Arduino Nano ESP32 WiFi-to-BLE bridge for TDS ingestion and LED feedback.
 - `flutter/`: local Flutter SDK.
 
 ## Run Locally

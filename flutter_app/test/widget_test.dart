@@ -381,6 +381,7 @@ void main() {
       find.textContaining('Water quality can be updated by testing'),
       findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('ai-search-done')), findsOneWidget);
 
     await tester.tap(find.text('Done'));
     await tester.pump(const Duration(milliseconds: 250));
@@ -442,6 +443,7 @@ void main() {
 
     expect(find.text('Waiting for API integration.'), findsOneWidget);
     expect(find.text('Voice search'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-search-done')), findsOneWidget);
     expect(
       tester
           .getSize(find.byKey(const ValueKey('ai-search-answer-panel')))
@@ -507,7 +509,8 @@ void main() {
 
     expect(find.text('Water quality'), findsOneWidget);
     expect(find.text('13:24:36'), findsOneWidget);
-    expect(find.text('Current GPS'), findsOneWidget);
+    expect(find.text('CCA'), findsAtLeastNWidgets(1));
+    expect(find.text('You have a new test result'), findsNothing);
   });
 }
 

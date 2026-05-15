@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:water_quality_companion/services/pebble_bluetooth_connection_service.dart';
 import 'package:water_quality_companion/services/water_quality_reports_api.dart';
 
 void main() {
-  test('generates a GPS water quality report from a TDS payload', () async {
+  test('generates a CCA SF water quality report from a TDS payload', () async {
     final reportsApi = WaterQualityReportsApi();
     final testedAt = DateTime(2026, 4, 28, 12, 34, 56);
 
@@ -20,13 +23,20 @@ void main() {
     expect(report.temperatureCelsius, 23.6);
     expect(report.cr6MgPerL, 0.049);
     expect(report.testedAtIso8601, testedAt.toIso8601String());
-    expect(report.locationName, 'Current GPS');
-    expect(report.specificLocation, '37.76940, -122.48620');
-    expect(report.regionCode, 'SF, CA');
+    expect(report.locationId, WaterQualityReportsApi.generatedReportLocationId);
+    expect(
+      report.locationName,
+      WaterQualityReportsApi.generatedReportLocationName,
+    );
+    expect(
+      report.specificLocation,
+      WaterQualityReportsApi.generatedReportSpecificLocation,
+    );
+    expect(report.regionCode, WaterQualityReportsApi.generatedReportRegionCode);
     expect(reports, contains(report));
   });
 
-  test('classifies generated GPS reports into existing region categories',
+  test('routes generated reports to CCA SF regardless of submitted GPS',
       () async {
     final reportsApi = WaterQualityReportsApi();
 
@@ -49,9 +59,12 @@ void main() {
       longitude: -122.4842,
     );
 
-    expect(oaklandReport.regionCode, 'Oakland, CA');
-    expect(berkeleyReport.regionCode, 'Berkeley, CA');
-    expect(dalyCityReport.regionCode, 'Daly City, CA');
+    expect(oaklandReport.regionCode,
+        WaterQualityReportsApi.generatedReportRegionCode);
+    expect(berkeleyReport.regionCode,
+        WaterQualityReportsApi.generatedReportRegionCode);
+    expect(dalyCityReport.regionCode,
+        WaterQualityReportsApi.generatedReportRegionCode);
   });
 
   test('derives generated water quality metrics only from TDS', () async {
@@ -80,6 +93,55 @@ void main() {
     expect(secondReport.ph, 7.11);
     expect(secondReport.temperatureCelsius, 25.4);
     expect(secondReport.cr6MgPerL, 0.128);
+  });
+
+  test('generates reports for quick-pick boundary TDS values', () async {
+    final reportsApi = WaterQualityReportsApi();
+
+    final lowReport = await reportsApi.addGeneratedTdsReport(
+      75,
+      testedAt: DateTime(2026, 4, 28, 12),
+    );
+    final highReport = await reportsApi.addGeneratedTdsReport(
+      600,
+      testedAt: DateTime(2026, 4, 28, 13),
+    );
+
+    expect(lowReport.tds, 75);
+    expect(lowReport.score, 91);
+    expect(highReport.tds, 600);
+    expect(highReport.score, 25);
+    expect((await reportsApi.fetchReports()),
+        containsAll([lowReport, highReport]));
+  });
+
+  test('deduplicates repeated TDS notifications by timestamp', () async {
+    final reportsApi = WaterQualityReportsApi();
+    final bluetoothService = PebbleBluetoothConnectionService(
+      reportsApi: reportsApi,
+    );
+    final generatedTdsValues = <int>[];
+    final subscription = reportsApi.generatedReports.listen(
+      (report) => generatedTdsValues.add(report.tds),
+    );
+
+    final repeatedPayload = utf8.encode(
+      '{"tds_number":"600","tds_timestamp":"1770000000"}',
+    );
+    await bluetoothService.handlePayloadBytesForTesting(repeatedPayload);
+    await bluetoothService.handlePayloadBytesForTesting(repeatedPayload);
+    await bluetoothService.handlePayloadBytesForTesting(repeatedPayload);
+    await pumpEventQueue();
+
+    expect(generatedTdsValues, [600]);
+
+    await bluetoothService.handlePayloadBytesForTesting(
+      utf8.encode('{"tds_number":"75","tds_timestamp":"1770000001"}'),
+    );
+    await pumpEventQueue();
+
+    expect(generatedTdsValues, [600, 75]);
+    await subscription.cancel();
   });
 
   test('deletes generated and base reports from the local library', () async {

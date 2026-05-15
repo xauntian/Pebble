@@ -1,14 +1,14 @@
-#include <Adafruit_NeoPixel.h>
+﻿#include <Adafruit_NeoPixel.h>
 #include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
+#include <WebServer.h>
+#include <WiFi.h>
 
-// Pebble Nano ESP32 BLE bridge.
-// Advertises the Pebble service consumed by the Flutter Bluetooth client.
-// Sends battery_number heartbeats, charging state, and one-shot tds_number readings.
-// The TDS input is treated as charging/idle while floating, and testing once
-// a stable sensor value appears or changes.
+// Pebble Nano ESP32 WiFi-to-BLE bridge.
+// A computer joins this board's WiFi AP, submits a TDS value over HTTP, and the
+// board forwards the value to the Flutter app over the existing BLE payload.
 
 static const char* DEVICE_NAME = "Pebble TestKit";
 
@@ -17,144 +17,385 @@ static const char* DEVICE_NAME = "Pebble TestKit";
 static const char* PEBBLE_SERVICE_UUID = "7b7d0001-4f8a-4c28-9f2a-6f0a8f0d1000";
 static const char* PEBBLE_PAYLOAD_UUID = "7b7d0002-4f8a-4c28-9f2a-6f0a8f0d1000";
 
-// TDS sensor analog output pin.
-// GPIO34 is input-only and works well for ESP32 ADC sensor input.
-static const int TDS_SENSOR_PIN = 34;
-static const float ADC_REFERENCE_VOLTAGE = 3.3;
-static const int ADC_RESOLUTION = 4095;
-static const float WATER_TEMPERATURE_C = 25.0;
-static const int TDS_SAMPLE_COUNT = 20;
-static const int TDS_FLOATING_ADC_MAX = 80;
-static const int TDS_VALID_ADC_MIN = 120;
-static const int TDS_WINDOW_MAX_SAMPLES = 20;
-static const unsigned long TDS_IDLE_READ_INTERVAL_MS = 250;
-static const unsigned long TDS_WINDOW_SAMPLE_INTERVAL_MS = 250;
-static const unsigned long TDS_SAMPLE_WINDOW_MS = 3000;
-static const unsigned long LED_BLINK_INTERVAL_MS = 500;
+// WiFi AP shown to the audience-control computer.
+static const char* WIFI_AP_SSID = "Pebble-TDS";
+static const char* WIFI_AP_PASSWORD = "pebbletds";
+IPAddress wifiApIp(192, 168, 4, 1);
+IPAddress wifiApGateway(192, 168, 4, 1);
+IPAddress wifiApSubnet(255, 255, 255, 0);
 
-// WS2812B 16-pixel RGB LED ring.
-// Wiring: 5V -> 5V, DI -> GPIO6, GND -> GND.
-static const int LED_RING_PIN = 6;
+// WS2812B 16-bit RGB LED ring.
+// Known-good data pin from arduino/testled/testled.ino:
+// Arduino Nano ESP32 physical A1 is ESP32 GPIO2. Use the raw GPIO number here
+// because Adafruit_NeoPixel's ESP32 RMT driver does not follow Nano ESP32
+// Arduino-pin remapping when sending data.
+static const int LED_RING_PIN = 2;
 static const int LED_RING_COUNT = 16;
-static const int LED_RING_BRIGHTNESS = 128; // 50% of 255.
+static const int LED_RING_BRIGHTNESS = 80;
+static const unsigned long LED_YELLOW_BLINK_DURATION_MS = 2000;
+static const unsigned long LED_RESULT_DURATION_MS = 4000;
+static const unsigned long LED_BLINK_INTERVAL_MS = 180;
+static const uint8_t BLE_TDS_NOTIFY_REPEAT_COUNT = 5;
+static const unsigned long BLE_TDS_NOTIFY_REPEAT_INTERVAL_MS = 300;
+static const unsigned long BLE_TDS_RETAIN_DURATION_MS = 2000;
 
 // TDS water quality levels in ppm. Lower TDS is considered better here.
 static const int TDS_EXCELLENT_MAX = 150;
 static const int TDS_GOOD_MAX = 300;
 static const int TDS_SENSOR_MAX = 1000;
+static const int TDS_INPUT_MAX = 2000;
 static const uint8_t MIN_STATUS_SATURATION = 80;
 static const uint8_t MAX_STATUS_SATURATION = 255;
-static const unsigned long BLE_NOTIFY_INTERVAL_MS = 5000;
-static const unsigned long FIRST_NOTIFY_DELAY_MS = 700;
-static const unsigned long TDS_PAYLOAD_HOLD_MS = 1000;
 
 BLECharacteristic* pebblePayloadCharacteristic = nullptr;
-Adafruit_NeoPixel ledRing(LED_RING_COUNT, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
-
-enum DeviceState {
-  DEVICE_CHARGING,
-  DEVICE_SAMPLING,
-  DEVICE_RESULT_HELD
-};
-
-DeviceState deviceState = DEVICE_CHARGING;
+Adafruit_NeoPixel* ledRing = nullptr;
+WebServer webServer(80);
 bool deviceConnected = false;
-bool initialNotifyPending = false;
-bool clearTdsPayloadPending = false;
-bool charging = true;
 String battery_number = "85";
 String tds_number = "0";
-unsigned long connectedAt = 0;
-unsigned long lastNotifyAt = 0;
-unsigned long lastTdsReadAt = 0;
-unsigned long samplingStartedAt = 0;
-unsigned long lastWindowSampleAt = 0;
-unsigned long lastLedBlinkAt = 0;
-unsigned long tdsPayloadPublishedAt = 0;
-int lastPublishedTds = -1;
-int tdsWindowSamples[TDS_WINDOW_MAX_SAMPLES];
-int tdsWindowSampleCount = 0;
-bool ledBlinkOn = true;
+String tds_timestamp = "0";
 
-void enterChargingState(bool notifyConnected);
-void resetTdsWindow();
-void showChargingOnLedRing();
-void showWaterQualityOnLedRing(int tdsValue);
+enum LedSequencePhase {
+  LED_SEQUENCE_IDLE,
+  LED_SEQUENCE_YELLOW_BLINK,
+  LED_SEQUENCE_RESULT
+};
 
-String tdsPayload() {
-  return "{\"battery_number\":\"" + battery_number
-      + "\",\"charging\":" + String(charging ? "true" : "false")
-      + ",\"tds_number\":\"" + tds_number + "\"}";
-}
+LedSequencePhase ledSequencePhase = LED_SEQUENCE_IDLE;
+unsigned long ledPhaseStartedAt = 0;
+unsigned long ledSequenceEndsAt = 0;
+unsigned long ledLastBlinkAt = 0;
+bool ledBlinkIsOn = false;
+int ledResultTdsValue = 0;
+bool shouldRestoreBatteryOnlyPayload = false;
+unsigned long restoreBatteryOnlyPayloadAt = 0;
+unsigned long lastPublishedTdsTimestampSeconds = 0;
+bool hasPublishedTdsTimestamp = false;
+String pendingTdsNotifyPayload = "";
+uint8_t pendingTdsNotifyRepeats = 0;
+unsigned long nextTdsNotifyRepeatAt = 0;
 
-String batteryOnlyPayload() {
-  return "{\"battery_number\":\"" + battery_number
-      + "\",\"charging\":" + String(charging ? "true" : "false") + "}";
-}
+const char INDEX_HTML[] PROGMEM = R"rawliteral(
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pebble TDS Control</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5fbef;
+      color: #132525;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        linear-gradient(135deg, rgba(104, 218, 31, 0.22), rgba(255, 255, 255, 0.42) 42%, rgba(174, 202, 105, 0.24)),
+        #f5fbef;
+    }
+    main {
+      width: min(560px, 100%);
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.66);
+      border-radius: 20px;
+      box-shadow: 0 18px 52px rgba(76, 124, 9, 0.16);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      padding: 28px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0 0 22px;
+      color: #355051;
+      font-size: 15px;
+      line-height: 1.45;
+    }
+    form {
+      display: grid;
+      gap: 14px;
+    }
+    label {
+      display: grid;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #355051;
+    }
+    input {
+      width: 100%;
+      min-height: 56px;
+      border: 1px solid rgba(76, 124, 9, 0.18);
+      border-radius: 16px;
+      padding: 0 14px;
+      font-size: 24px;
+      color: #132525;
+      background: rgba(255, 255, 255, 0.72);
+      outline: none;
+    }
+    input:focus {
+      border-color: rgba(76, 124, 9, 0.44);
+      box-shadow: 0 0 0 4px rgba(104, 218, 31, 0.16);
+    }
+    button {
+      min-height: 52px;
+      border: 0;
+      border-radius: 999px;
+      font-size: 17px;
+      font-weight: 800;
+      color: #ffffff;
+      background: #4c7c09;
+      box-shadow: 0 10px 22px rgba(76, 124, 9, 0.22);
+      cursor: pointer;
+    }
+    button:disabled {
+      cursor: progress;
+      opacity: 0.7;
+    }
+    .chips {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .chips button {
+      min-height: 42px;
+      color: #132525;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid rgba(76, 124, 9, 0.12);
+      box-shadow: none;
+      font-size: 15px;
+    }
+    output {
+      display: block;
+      min-height: 26px;
+      margin-top: 18px;
+      font-size: 15px;
+      color: #355051;
+    }
+    .ok {
+      color: #4c7c09;
+      font-weight: 800;
+    }
+    .error {
+      color: #b3261e;
+      font-weight: 800;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pebble TDS Control</h1>
+    <p>Send one TDS result to the paired phone.</p>
+    <form id="tds-form">
+      <label for="tds">TDS value, ppm
+        <input id="tds" name="tds" type="number" inputmode="numeric" min="0" max="2000" step="1" placeholder="123" required>
+      </label>
+      <button id="submit" type="submit">Send report to phone</button>
+    </form>
+    <div class="chips" aria-label="Quick values">
+      <button type="button" data-value="75">75</button>
+      <button type="button" data-value="150">150</button>
+      <button type="button" data-value="300">300</button>
+      <button type="button" data-value="600">600</button>
+    </div>
+    <output id="status">Connect this computer to WiFi Pebble-TDS, then submit a value.</output>
+  </main>
+  <script>
+    const endpoint = location.protocol === "file:" ? "http://192.168.4.1/tds" : "/tds";
+    const form = document.getElementById("tds-form");
+    const input = document.getElementById("tds");
+    const submit = document.getElementById("submit");
+    const status = document.getElementById("status");
+    let isSubmitting = false;
+
+    document.querySelectorAll("[data-value]").forEach((button) => {
+      button.addEventListener("click", () => {
+        input.value = button.dataset.value;
+        input.focus();
+      });
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (isSubmitting) return;
+
+      const value = input.value.trim();
+      isSubmitting = true;
+      submit.disabled = true;
+      status.className = "";
+      status.textContent = "Sending...";
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {"Content-Type": "application/x-www-form-urlencoded"},
+          body: new URLSearchParams({
+            tds: value,
+            tds_timestamp: Math.floor(Date.now() / 1000).toString()
+          })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || "Send failed");
+        }
+        status.className = "ok";
+        status.textContent = `Sent ${result.tds_number} ppm. Phone connected: ${result.ble_connected ? "yes" : "no"}.`;
+      } catch (error) {
+        status.className = "error";
+        status.textContent = `${error.message}. Check WiFi Pebble-TDS and open http://192.168.4.1/.`;
+      } finally {
+        isSubmitting = false;
+        submit.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
+)rawliteral";
+
+void publishPayload();
+void publishBatteryOnlyPayload();
 
 class PebbleServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
     deviceConnected = true;
-    initialNotifyPending = true;
-    connectedAt = millis();
-    lastNotifyAt = 0;
-    Serial.println("BLE central connected.");
+    publishBatteryOnlyPayload();
   }
 
   void onDisconnect(BLEServer* server) override {
     deviceConnected = false;
-    initialNotifyPending = false;
-    Serial.println("BLE central disconnected; advertising restarted.");
     BLEDevice::startAdvertising();
   }
 };
 
-void publishPayload(const String& payload, bool notifyConnected = true) {
+void setupOpenBleConnection() {
+  // Open BLE connection mode:
+  // - Advertises immediately.
+  // - Does not require a PIN/password.
+  // - Does not require bonding.
+  // If Android shows a connection prompt, tap confirm to continue.
+  BLESecurity* security = new BLESecurity();
+  security->setAuthenticationMode(ESP_LE_AUTH_NO_BOND);
+  security->setCapability(ESP_IO_CAP_NONE);
+  security->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+}
+
+String payload() {
+  return "{\"battery_number\":\"" + battery_number
+      + "\",\"tds_number\":\"" + tds_number
+      + "\",\"tds_timestamp\":\"" + tds_timestamp + "\"}";
+}
+
+String batteryOnlyPayload() {
+  return "{\"battery_number\":\"" + battery_number + "\"}";
+}
+
+String stateJson() {
+  return "{\"ok\":true,\"battery_number\":\"" + battery_number
+      + "\",\"tds_number\":\"" + tds_number
+      + "\",\"tds_timestamp\":\"" + tds_timestamp
+      + "\",\"ble_connected\":" + String(deviceConnected ? "true" : "false")
+      + ",\"wifi_ssid\":\"" + WIFI_AP_SSID
+      + "\",\"wifi_ip\":\"" + WiFi.softAPIP().toString()
+      + "\",\"wifi_clients\":" + String(WiFi.softAPgetStationNum()) + "}";
+}
+
+void publishPayloadText(const String& nextPayload) {
   if (pebblePayloadCharacteristic == nullptr) {
     return;
   }
 
-  pebblePayloadCharacteristic->setValue(payload.c_str());
+  pebblePayloadCharacteristic->setValue(nextPayload.c_str());
 
-  if (deviceConnected && notifyConnected) {
+  if (deviceConnected) {
     pebblePayloadCharacteristic->notify();
   }
 
-  Serial.print("BLE payload: ");
-  Serial.println(payload);
+  Serial.print("Sent to app: ");
+  Serial.println(nextPayload);
 }
 
-void publishBatteryOnlyPayload(bool notifyConnected = true) {
-  clearTdsPayloadPending = false;
-  publishPayload(batteryOnlyPayload(), notifyConnected);
+void publishPayload() {
+  pendingTdsNotifyPayload = payload();
+  publishPayloadText(pendingTdsNotifyPayload);
+  pendingTdsNotifyRepeats = BLE_TDS_NOTIFY_REPEAT_COUNT > 0
+      ? BLE_TDS_NOTIFY_REPEAT_COUNT - 1
+      : 0;
+  nextTdsNotifyRepeatAt = millis() + BLE_TDS_NOTIFY_REPEAT_INTERVAL_MS;
+
+  // Retry the same timestamped payload briefly so the phone can tolerate a
+  // missed BLE notify packet, then restore a battery-only readable value.
+  shouldRestoreBatteryOnlyPayload = true;
+  restoreBatteryOnlyPayloadAt = millis() + BLE_TDS_RETAIN_DURATION_MS;
 }
 
-void publishTdsPayload(bool notifyConnected = true) {
-  publishPayload(tdsPayload(), notifyConnected);
-  clearTdsPayloadPending = true;
-  tdsPayloadPublishedAt = millis();
-}
-
-void updateBatteryNumber(String nextValue) {
-  nextValue.trim();
-  nextValue.replace("%", "");
-
-  if (nextValue.length() == 0) {
+void repeatTdsPayloadIfNeeded() {
+  if (pendingTdsNotifyRepeats == 0 ||
+      pendingTdsNotifyPayload.length() == 0 ||
+      pebblePayloadCharacteristic == nullptr) {
     return;
   }
 
-  battery_number = nextValue;
-  publishBatteryOnlyPayload();
+  if ((long)(millis() - nextTdsNotifyRepeatAt) < 0) {
+    return;
+  }
+
+  publishPayloadText(pendingTdsNotifyPayload);
+  pendingTdsNotifyRepeats--;
+  nextTdsNotifyRepeatAt = millis() + BLE_TDS_NOTIFY_REPEAT_INTERVAL_MS;
 }
 
-String normalizedTdsInput(String input) {
-  input.trim();
-  input.toLowerCase();
-  input.replace("tds_number=", "");
-  input.replace("tds=", "");
-  input.replace("ppm", "");
-  input.trim();
-  return input;
+void publishBatteryOnlyPayload() {
+  if (pebblePayloadCharacteristic == nullptr) {
+    return;
+  }
+
+  const String retainedPayload = batteryOnlyPayload();
+  pebblePayloadCharacteristic->setValue(retainedPayload.c_str());
+
+  Serial.print("Set app-readable payload: ");
+  Serial.println(retainedPayload);
+}
+
+void restoreBatteryOnlyPayloadIfNeeded() {
+  if (!shouldRestoreBatteryOnlyPayload || pebblePayloadCharacteristic == nullptr) {
+    return;
+  }
+
+  if ((long)(millis() - restoreBatteryOnlyPayloadAt) < 0) {
+    return;
+  }
+
+  shouldRestoreBatteryOnlyPayload = false;
+  pendingTdsNotifyRepeats = 0;
+  pendingTdsNotifyPayload = "";
+  const String retainedPayload = batteryOnlyPayload();
+  pebblePayloadCharacteristic->setValue(retainedPayload.c_str());
+}
+
+void addCorsHeaders() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  webServer.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+void sendJson(int statusCode, const String& body) {
+  addCorsHeaders();
+  webServer.send(statusCode, "application/json", body);
 }
 
 bool isNumericTdsValue(const String& value) {
@@ -171,294 +412,344 @@ bool isNumericTdsValue(const String& value) {
   return true;
 }
 
-void updateTdsNumber(String nextValue) {
-  const String normalizedValue = normalizedTdsInput(nextValue);
-  if (!isNumericTdsValue(normalizedValue)) {
-    Serial.println("{\"error\":\"Use a number, tds=123, tds_number=123, or battery_number=85.\"}");
-    return;
+bool firstIntegerFromText(const String& text, String& output) {
+  output = "";
+
+  for (int i = 0; i < text.length(); i++) {
+    if (!isDigit(text.charAt(i))) {
+      continue;
+    }
+
+    while (i < text.length() && isDigit(text.charAt(i))) {
+      output += text.charAt(i);
+      i++;
+    }
+
+    return output.length() > 0;
   }
 
-  const int tdsValue = normalizedValue.toInt();
-  deviceState = DEVICE_RESULT_HELD;
-  tds_number = String(tdsValue);
-  charging = false;
-  lastPublishedTds = tdsValue;
-  resetTdsWindow();
-  showWaterQualityOnLedRing(tdsValue);
-  publishTdsPayload();
+  return false;
 }
 
-void clearTdsNumber() {
-  enterChargingState(true);
-}
+String normalizeTdsInput(String input) {
+  input.trim();
+  input.replace("ppm", "");
+  input.replace("PPM", "");
+  input.trim();
 
-void showLedRingColor(uint32_t color) {
-  const uint32_t correctedColor = ledRing.gamma32(color);
-
-  for (int i = 0; i < LED_RING_COUNT; i++) {
-    ledRing.setPixelColor(i, correctedColor);
+  const String tdsNumberPrefix = "tds_number=";
+  if (input.startsWith(tdsNumberPrefix)) {
+    input = input.substring(tdsNumberPrefix.length());
   }
 
-  ledRing.show();
+  const String tdsPrefix = "tds=";
+  if (input.startsWith(tdsPrefix)) {
+    input = input.substring(tdsPrefix.length());
+  }
+
+  const String valuePrefix = "value=";
+  if (input.startsWith(valuePrefix)) {
+    input = input.substring(valuePrefix.length());
+  }
+
+  input.trim();
+
+  if (isNumericTdsValue(input)) {
+    return input;
+  }
+
+  String extractedValue;
+  if (firstIntegerFromText(input, extractedValue)) {
+    return extractedValue;
+  }
+
+  return "";
 }
 
-void showLedRingOff() {
-  ledRing.clear();
-  ledRing.show();
+bool parseTdsValue(String input, int& tdsValue) {
+  const String normalized = normalizeTdsInput(input);
+
+  if (!isNumericTdsValue(normalized)) {
+    return false;
+  }
+
+  const long parsed = normalized.toInt();
+  if (parsed < 0 || parsed > TDS_INPUT_MAX) {
+    return false;
+  }
+
+  tdsValue = (int)parsed;
+  return true;
 }
 
-void showChargingOnLedRing() {
-  showLedRingColor(ledRing.Color(255, 255, 255));
+bool tdsValueFromRequest(int& tdsValue) {
+  if (webServer.hasArg("tds") && parseTdsValue(webServer.arg("tds"), tdsValue)) {
+    return true;
+  }
+
+  if (webServer.hasArg("tds_number") && parseTdsValue(webServer.arg("tds_number"), tdsValue)) {
+    return true;
+  }
+
+  if (webServer.hasArg("value") && parseTdsValue(webServer.arg("value"), tdsValue)) {
+    return true;
+  }
+
+  if (webServer.hasArg("plain") && parseTdsValue(webServer.arg("plain"), tdsValue)) {
+    return true;
+  }
+
+  return false;
 }
 
-void showSamplingOnLedRing() {
-  showLedRingColor(ledRing.Color(255, 190, 0));
+unsigned long timestampFromRequest() {
+  String value = "";
+  if (webServer.hasArg("tds_timestamp")) {
+    value = webServer.arg("tds_timestamp");
+  } else if (webServer.hasArg("timestamp")) {
+    value = webServer.arg("timestamp");
+  } else if (webServer.hasArg("ts")) {
+    value = webServer.arg("ts");
+  }
+
+  value.trim();
+  if (value.length() > 0 && isNumericTdsValue(value)) {
+    return strtoul(value.c_str(), nullptr, 10);
+  }
+
+  return millis() / 1000;
 }
 
-void showWaterQualityOnLedRing(int tdsValue) {
-  if (tdsValue <= TDS_GOOD_MAX) {
-    showLedRingColor(ledRing.Color(0, 255, 0));
+uint8_t statusSaturation(int tdsValue, int rangeMin, int rangeMax) {
+  tdsValue = constrain(tdsValue, rangeMin, rangeMax);
+  const int range = max(1, rangeMax - rangeMin);
+  const int qualityPosition = rangeMax - tdsValue;
+  return map(
+    qualityPosition,
+    0,
+    range,
+    MIN_STATUS_SATURATION,
+    MAX_STATUS_SATURATION
+  );
+}
+
+uint32_t waterQualityColor(int tdsValue) {
+  uint16_t hue = 0;
+  uint8_t saturation = MAX_STATUS_SATURATION;
+
+  if (tdsValue <= TDS_EXCELLENT_MAX) {
+    hue = 21845; // Green.
+    saturation = statusSaturation(tdsValue, 0, TDS_EXCELLENT_MAX);
+  } else if (tdsValue <= TDS_GOOD_MAX) {
+    hue = 10923; // Yellow.
+    saturation = statusSaturation(tdsValue, TDS_EXCELLENT_MAX + 1, TDS_GOOD_MAX);
   } else {
-    showLedRingColor(ledRing.Color(255, 0, 0));
-  }
-}
-
-void updateLedBlink(unsigned long now) {
-  if (deviceState != DEVICE_CHARGING && deviceState != DEVICE_SAMPLING) {
-    return;
+    hue = 0; // Red.
+    saturation = statusSaturation(tdsValue, TDS_GOOD_MAX + 1, TDS_SENSOR_MAX);
   }
 
-  if (now - lastLedBlinkAt < LED_BLINK_INTERVAL_MS) {
-    return;
-  }
-
-  lastLedBlinkAt = now;
-  ledBlinkOn = !ledBlinkOn;
-
-  if (!ledBlinkOn) {
-    showLedRingOff();
-    return;
-  }
-
-  if (deviceState == DEVICE_CHARGING) {
-    showChargingOnLedRing();
-  } else {
-    showSamplingOnLedRing();
-  }
-}
-
-int readTdsRaw() {
-  long total = 0;
-
-  for (int i = 0; i < TDS_SAMPLE_COUNT; i++) {
-    total += analogRead(TDS_SENSOR_PIN);
-    delay(5);
-  }
-
-  return total / TDS_SAMPLE_COUNT;
-}
-
-float calculateTdsPpmFromRaw(int rawAdc) {
-  const float voltage = rawAdc * ADC_REFERENCE_VOLTAGE / ADC_RESOLUTION;
-  const float compensationCoefficient = 1.0 + 0.02 * (WATER_TEMPERATURE_C - 25.0);
-  const float compensatedVoltage = voltage / compensationCoefficient;
-
-  float tdsValue = (133.42 * compensatedVoltage * compensatedVoltage * compensatedVoltage
-      - 255.86 * compensatedVoltage * compensatedVoltage
-      + 857.39 * compensatedVoltage) * 0.5;
-
-  if (tdsValue < 0) {
-    tdsValue = 0;
-  }
-
-  return tdsValue;
-}
-
-bool isTdsFloating(int rawAdc) {
-  return rawAdc <= TDS_FLOATING_ADC_MAX;
-}
-
-bool isTdsValid(int rawAdc) {
-  return rawAdc >= TDS_VALID_ADC_MIN;
-}
-
-void resetTdsWindow() {
-  tdsWindowSampleCount = 0;
-}
-
-void addTdsWindowSample(int rawAdc) {
-  if (tdsWindowSampleCount >= TDS_WINDOW_MAX_SAMPLES) {
-    return;
-  }
-
-  tdsWindowSamples[tdsWindowSampleCount] =
-      (int)(calculateTdsPpmFromRaw(rawAdc) + 0.5);
-  tdsWindowSampleCount++;
-}
-
-int trustedTdsWindowValue() {
-  if (tdsWindowSampleCount == 0) {
+  if (ledRing == nullptr) {
     return 0;
   }
 
-  long total = 0;
-  int lowest = tdsWindowSamples[0];
-  int highest = tdsWindowSamples[0];
-
-  for (int i = 0; i < tdsWindowSampleCount; i++) {
-    const int value = tdsWindowSamples[i];
-    total += value;
-    lowest = min(lowest, value);
-    highest = max(highest, value);
-  }
-
-  if (tdsWindowSampleCount > 2) {
-    total -= lowest;
-    total -= highest;
-    return (int)((total + (tdsWindowSampleCount - 2) / 2) / (tdsWindowSampleCount - 2));
-  }
-
-  return (int)((total + tdsWindowSampleCount / 2) / tdsWindowSampleCount);
+  return ledRing->ColorHSV(hue, saturation, 255);
 }
 
-void enterChargingState(bool notifyConnected = true) {
-  deviceState = DEVICE_CHARGING;
-  charging = true;
-  tds_number = "0";
-  lastPublishedTds = -1;
-  resetTdsWindow();
-  clearTdsPayloadPending = false;
-  ledBlinkOn = true;
-  lastLedBlinkAt = millis();
-  showChargingOnLedRing();
+void showLedRingColor(uint32_t color) {
+  if (ledRing == nullptr) {
+    return;
+  }
 
-  if (notifyConnected) {
-    publishBatteryOnlyPayload();
+  for (int i = 0; i < LED_RING_COUNT; i++) {
+    ledRing->setPixelColor(i, color);
+  }
+
+  ledRing->show();
+}
+
+void showWaterQualityOnLedRing(int tdsValue) {
+  if (ledRing == nullptr) {
+    return;
+  }
+
+  showLedRingColor(ledRing->gamma32(waterQualityColor(tdsValue)));
+}
+
+void showYellowBlinkOnLedRing() {
+  if (ledRing == nullptr) {
+    return;
+  }
+
+  showLedRingColor(ledRing->gamma32(ledRing->Color(255, 190, 0)));
+}
+
+void clearLedRing() {
+  if (ledRing == nullptr) {
+    return;
+  }
+
+  ledRing->clear();
+  ledRing->show();
+}
+
+void startLedTestSequence(int tdsValue) {
+  ledResultTdsValue = tdsValue;
+  ledSequencePhase = LED_SEQUENCE_YELLOW_BLINK;
+  ledPhaseStartedAt = millis();
+  ledSequenceEndsAt = ledPhaseStartedAt + LED_YELLOW_BLINK_DURATION_MS + LED_RESULT_DURATION_MS;
+  ledLastBlinkAt = 0;
+  ledBlinkIsOn = false;
+  clearLedRing();
+}
+
+void updateLedTestSequence() {
+  if (ledSequencePhase == LED_SEQUENCE_IDLE) {
+    return;
+  }
+
+  const unsigned long now = millis();
+
+  if ((long)(now - ledSequenceEndsAt) >= 0) {
+    ledSequencePhase = LED_SEQUENCE_IDLE;
+    clearLedRing();
+    return;
+  }
+
+  if (ledSequencePhase == LED_SEQUENCE_YELLOW_BLINK) {
+    if (now - ledPhaseStartedAt >= LED_YELLOW_BLINK_DURATION_MS) {
+      ledSequencePhase = LED_SEQUENCE_RESULT;
+      ledPhaseStartedAt = now;
+      showWaterQualityOnLedRing(ledResultTdsValue);
+      return;
+    }
+
+    if (ledLastBlinkAt == 0 || now - ledLastBlinkAt >= LED_BLINK_INTERVAL_MS) {
+      ledLastBlinkAt = now;
+      ledBlinkIsOn = !ledBlinkIsOn;
+      if (ledBlinkIsOn) {
+        showYellowBlinkOnLedRing();
+      } else {
+        clearLedRing();
+      }
+    }
+
+    return;
+  }
+
+  if (ledSequencePhase == LED_SEQUENCE_RESULT &&
+      now - ledPhaseStartedAt >= LED_RESULT_DURATION_MS) {
+    ledSequencePhase = LED_SEQUENCE_IDLE;
+    clearLedRing();
   }
 }
 
-void enterSamplingState(int rawAdc, unsigned long now) {
-  deviceState = DEVICE_SAMPLING;
-  charging = false;
-  clearTdsPayloadPending = false;
-  samplingStartedAt = now;
-  lastWindowSampleAt = now;
-  ledBlinkOn = true;
-  lastLedBlinkAt = now;
-  resetTdsWindow();
-  addTdsWindowSample(rawAdc);
-  showSamplingOnLedRing();
+bool updateTdsNumber(int nextTds, unsigned long timestampSeconds, const char* source) {
+  if (hasPublishedTdsTimestamp &&
+      lastPublishedTdsTimestampSeconds == timestampSeconds) {
+    Serial.print("Ignored duplicate TDS report in second ");
+    Serial.println(timestampSeconds);
+    return false;
+  }
+
+  hasPublishedTdsTimestamp = true;
+  lastPublishedTdsTimestampSeconds = timestampSeconds;
+  tds_timestamp = String(timestampSeconds);
+  tds_number = String(nextTds);
+  startLedTestSequence(nextTds);
+  publishPayload();
+
+  Serial.print("TDS report from ");
+  Serial.print(source);
+  Serial.print(": ");
+  Serial.print(tds_number);
+  Serial.print(" ppm, timestamp: ");
+  Serial.print(tds_timestamp);
+  Serial.print(", BLE connected: ");
+  Serial.println(deviceConnected ? "yes" : "no");
+  return true;
+}
+
+void updateBatteryNumber(String nextValue) {
+  nextValue.trim();
+  nextValue.replace("%", "");
+
+  if (nextValue.length() == 0) {
+    return;
+  }
+
+  battery_number = nextValue;
   publishBatteryOnlyPayload();
-
-  Serial.print("TDS sampling started, raw ADC: ");
-  Serial.println(rawAdc);
 }
 
-void finishTdsSampling() {
-  const int tdsValue = trustedTdsWindowValue();
-
-  deviceState = DEVICE_RESULT_HELD;
-  charging = false;
-  tds_number = String(tdsValue);
-  lastPublishedTds = tdsValue;
-  showWaterQualityOnLedRing(tdsValue);
-  publishTdsPayload();
-
-  Serial.print("TDS sampling complete, samples: ");
-  Serial.print(tdsWindowSampleCount);
-  Serial.print(", trusted ppm: ");
-  Serial.println(tdsValue);
+void handleRoot() {
+  addCorsHeaders();
+  webServer.send_P(200, "text/html", INDEX_HTML);
 }
 
-void updateTdsSensor(unsigned long now) {
-  if (now - lastTdsReadAt < TDS_IDLE_READ_INTERVAL_MS) {
+void handleStatus() {
+  sendJson(200, stateJson());
+}
+
+void handleTdsOptions() {
+  addCorsHeaders();
+  webServer.send(204);
+}
+
+void handleTdsGet() {
+  sendJson(405, "{\"ok\":false,\"error\":\"Send TDS values with POST only.\"}");
+}
+
+void handleTdsSubmit() {
+  int nextTds = 0;
+  if (!tdsValueFromRequest(nextTds)) {
+    sendJson(400, "{\"ok\":false,\"error\":\"Use a whole-number TDS value from 0 to 2000.\"}");
     return;
   }
 
-  lastTdsReadAt = now;
-  const int rawAdc = readTdsRaw();
-
-  if (isTdsFloating(rawAdc)) {
-    if (deviceState != DEVICE_CHARGING) {
-      enterChargingState();
-    }
+  if (!updateTdsNumber(nextTds, timestampFromRequest(), "wifi")) {
+    sendJson(429, "{\"ok\":false,\"error\":\"Only one TDS report can be generated per second.\"}");
     return;
   }
 
-  if (deviceState == DEVICE_CHARGING) {
-    if (isTdsValid(rawAdc)) {
-      enterSamplingState(rawAdc, now);
-    }
-    return;
-  }
-
-  if (deviceState == DEVICE_SAMPLING) {
-    if (now - lastWindowSampleAt >= TDS_WINDOW_SAMPLE_INTERVAL_MS) {
-      lastWindowSampleAt = now;
-      addTdsWindowSample(rawAdc);
-    }
-
-    if (now - samplingStartedAt >= TDS_SAMPLE_WINDOW_MS) {
-      finishTdsSampling();
-    }
-  }
+  sendJson(200, stateJson());
 }
 
-void readSerialCommand() {
+void handleNotFound() {
+  if (webServer.method() == HTTP_OPTIONS) {
+    handleTdsOptions();
+    return;
+  }
+
+  sendJson(404, "{\"ok\":false,\"error\":\"Not found.\"}");
+}
+
+void readCommandFromSerial() {
   if (!Serial.available()) {
     return;
   }
 
   String input = Serial.readStringUntil('\n');
   input.trim();
-  if (input.length() == 0) {
-    return;
-  }
-
-  String command = input;
-  command.toLowerCase();
-
-  if (command == "clear_tds" || command == "clear_tds_number") {
-    clearTdsNumber();
-    return;
-  }
 
   const String batteryPrefix = "battery_number=";
-  if (command.startsWith(batteryPrefix)) {
+  if (input.startsWith(batteryPrefix)) {
     updateBatteryNumber(input.substring(batteryPrefix.length()));
     return;
   }
 
-  const String tdsPrefix = "tds_number=";
-  if (command.startsWith(tdsPrefix)) {
-    updateTdsNumber(input.substring(tdsPrefix.length()));
+  int nextTds = 0;
+  if (!parseTdsValue(input, nextTds)) {
+    Serial.print("Ignored invalid input: ");
+    Serial.println(input);
+    Serial.println("Use a number, tds=123, tds_number=123, or battery_number=85.");
     return;
   }
 
-  const String shortTdsPrefix = "tds=";
-  if (command.startsWith(shortTdsPrefix)) {
-    updateTdsNumber(input.substring(shortTdsPrefix.length()));
-    return;
-  }
-
-  if (isNumericTdsValue(normalizedTdsInput(input))) {
-    updateTdsNumber(input);
-    return;
-  }
-
-  Serial.println("{\"error\":\"Use a number, tds=123, tds_number=123, or battery_number=85.\"}");
-}
-
-void setupLedRing() {
-  ledRing.begin();
-  ledRing.setBrightness(LED_RING_BRIGHTNESS);
-  ledRing.clear();
-  showChargingOnLedRing();
+  updateTdsNumber(nextTds, millis() / 1000, "serial");
 }
 
 void setupBle() {
   BLEDevice::init(DEVICE_NAME);
-  BLEDevice::setPower(ESP_PWR_LVL_P9);
 
   BLEServer* server = BLEDevice::createServer();
   server->setCallbacks(new PebbleServerCallbacks());
@@ -470,7 +761,6 @@ void setupBle() {
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
   );
   pebblePayloadCharacteristic->addDescriptor(new BLE2902());
-  publishBatteryOnlyPayload(false);
 
   pebbleService->start();
 
@@ -481,62 +771,67 @@ void setupBle() {
   advertising->setMinPreferred(0x06);
   advertising->setMinPreferred(0x12);
   BLEDevice::startAdvertising();
+
+  publishBatteryOnlyPayload();
+}
+
+void setupWifiAp() {
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_AP);
+  WiFi.setSleep(false);
+  WiFi.softAPConfig(wifiApIp, wifiApGateway, wifiApSubnet);
+  const bool started = WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+
+  Serial.print("WiFi AP ");
+  Serial.print(WIFI_AP_SSID);
+  Serial.println(started ? " started." : " failed to start.");
+  Serial.print("WiFi password: ");
+  Serial.println(WIFI_AP_PASSWORD);
+  Serial.print("Open page: http://");
+  Serial.println(WiFi.softAPIP());
+}
+
+void setupWebServer() {
+  webServer.on("/", HTTP_GET, handleRoot);
+  webServer.on("/status", HTTP_GET, handleStatus);
+  webServer.on("/tds", HTTP_OPTIONS, handleTdsOptions);
+  webServer.on("/tds", HTTP_GET, handleTdsGet);
+  webServer.on("/tds", HTTP_POST, handleTdsSubmit);
+  webServer.onNotFound(handleNotFound);
+  webServer.begin();
 }
 
 void setup() {
   Serial.begin(115200);
   Serial.setTimeout(50);
-  analogReadResolution(12);
-  pinMode(TDS_SENSOR_PIN, INPUT);
   Serial.println();
-  Serial.println("Booting Pebble Nano ESP32 BLE bridge...");
+  Serial.println("Pebble Nano ESP32 booting.");
 
-  setupLedRing();
+  setupWifiAp();
+  setupWebServer();
+
+  ledRing = new Adafruit_NeoPixel(LED_RING_COUNT, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
+  ledRing->begin();
+  ledRing->setBrightness(LED_RING_BRIGHTNESS);
+  clearLedRing();
+
   setupBle();
 
-  Serial.println("Pebble Nano ESP32 BLE bridge started.");
+  Serial.println("Pebble Nano ESP32 WiFi-to-BLE bridge started.");
   Serial.print("BLE is advertising as ");
   Serial.println(DEVICE_NAME);
   Serial.print("Pebble service UUID: ");
   Serial.println(PEBBLE_SERVICE_UUID);
   Serial.print("Payload characteristic UUID: ");
   Serial.println(PEBBLE_PAYLOAD_UUID);
-  Serial.println("No PIN, password, or Android Bluetooth settings pairing is required.");
-  Serial.println("Connect from the Pebble app or a BLE scanner such as nRF Connect.");
-  Serial.println("TDS is read from GPIO34.");
-  Serial.println("Floating or low TDS ADC reads as charging/idle.");
-  Serial.println("A valid TDS ADC value starts one sampling window, then publishes one tds_number.");
-  Serial.println("The next test waits until TDS returns to charging/idle first.");
-  Serial.println("You can still send manual TDS through Serial, for example:");
-  Serial.println("123");
-  Serial.println("tds=123");
-  Serial.println("tds_number=123");
-  Serial.println("Send battery through Serial, for example:");
-  Serial.println("battery_number=85");
-  Serial.println("Manual TDS is sent only once when you type a value in Serial Monitor.");
-  Serial.println("Type clear_tds to clear a stale manual TDS value.");
-  Serial.println("WS2812B LED ring reads DI from GPIO6.");
-  Serial.println("LED: charging white blink, testing yellow blink, normal green, abnormal red.");
+  Serial.println("Submit TDS from the web page, or type a number in Serial Monitor.");
+  Serial.println("WS2812B LED ring DI uses the known-good Nano A1 / ESP32 GPIO2 pin.");
 }
 
 void loop() {
-  readSerialCommand();
-
-  const unsigned long now = millis();
-  updateTdsSensor(now);
-  updateLedBlink(now);
-
-  if (initialNotifyPending && now - connectedAt >= FIRST_NOTIFY_DELAY_MS) {
-    initialNotifyPending = false;
-    publishBatteryOnlyPayload();
-  }
-
-  if (clearTdsPayloadPending && now - tdsPayloadPublishedAt >= TDS_PAYLOAD_HOLD_MS) {
-    publishBatteryOnlyPayload(false);
-  }
-
-  if (deviceConnected && now - lastNotifyAt >= BLE_NOTIFY_INTERVAL_MS) {
-    lastNotifyAt = now;
-    publishBatteryOnlyPayload();
-  }
+  webServer.handleClient();
+  readCommandFromSerial();
+  updateLedTestSequence();
+  repeatTdsPayloadIfNeeded();
+  restoreBatteryOnlyPayloadIfNeeded();
 }

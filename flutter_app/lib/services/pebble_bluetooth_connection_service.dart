@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../models/device_connection.dart';
@@ -27,7 +29,7 @@ class PebbleBluetoothConnectionService {
     'pebble testkit',
   ];
   static const _deviceStatusCheckInterval = Duration(seconds: 4);
-  static const _sameTdsDuplicateWindow = Duration(seconds: 2);
+  static const _processedTdsTimestampLimit = 32;
 
   final List<String> deviceNameKeywords;
   final WaterQualityReportsApi _reportsApi;
@@ -41,8 +43,8 @@ class PebbleBluetoothConnectionService {
   BluetoothCharacteristic? _payloadCharacteristic;
   DeviceConnection _lastConnection = const DeviceConnection.unconnected();
   int? _lastBatteryPercent;
-  int? _lastReceivedTds;
-  DateTime? _lastReceivedTdsAt;
+  final Set<int> _processedTdsTimestampsSeconds = <int>{};
+  final Queue<int> _processedTdsTimestampOrder = Queue<int>();
   bool _isCheckingDeviceStatus = false;
   int _connectionWatcherCount = 0;
 
@@ -172,7 +174,6 @@ class PebbleBluetoothConnectionService {
             value,
             device: device,
             generateReportFromTds: true,
-            generateReportOnlyWhenTdsChanges: true,
           ),
         );
       });
@@ -188,8 +189,7 @@ class PebbleBluetoothConnectionService {
         await _handlePayloadBytes(
           initialValue,
           device: device,
-          generateReportFromTds: true,
-          generateReportOnlyWhenTdsChanges: true,
+          generateReportFromTds: false,
         );
       } catch (_) {
         // The next notification will update the card.
@@ -227,7 +227,6 @@ class PebbleBluetoothConnectionService {
     List<int> value, {
     required BluetoothDevice device,
     required bool generateReportFromTds,
-    bool generateReportOnlyWhenTdsChanges = false,
   }) async {
     final payload = _PebblePayload.tryParse(value);
     if (payload == null) {
@@ -242,29 +241,46 @@ class PebbleBluetoothConnectionService {
 
     final tds = payload.tds;
     if (generateReportFromTds && tds != null && tds > 0) {
-      final isDuplicateTds = _isDuplicateTdsPayload(tds);
-      _lastReceivedTds = tds;
-      _lastReceivedTdsAt = DateTime.now();
-
-      if (!generateReportOnlyWhenTdsChanges || !isDuplicateTds) {
+      final timestampSeconds = payload.tdsTimestampSeconds;
+      final isDuplicateTds = _isDuplicateTdsPayload(timestampSeconds);
+      if (!isDuplicateTds) {
+        _markTdsPayloadProcessed(timestampSeconds);
         await _reportsApi.addGeneratedTdsReport(tds);
       }
-    } else if (tds != null) {
-      _lastReceivedTds = tds;
-      _lastReceivedTdsAt = DateTime.now();
-    } else {
-      _lastReceivedTds = null;
-      _lastReceivedTdsAt = null;
     }
   }
 
-  bool _isDuplicateTdsPayload(int tds) {
-    final lastReceivedAt = _lastReceivedTdsAt;
-    if (_lastReceivedTds != tds || lastReceivedAt == null) {
+  @visibleForTesting
+  Future<void> handlePayloadBytesForTesting(
+    List<int> value, {
+    bool generateReportFromTds = true,
+  }) {
+    return _handlePayloadBytes(
+      value,
+      device: BluetoothDevice.fromId('00:00:00:00:00:00'),
+      generateReportFromTds: generateReportFromTds,
+    );
+  }
+
+  bool _isDuplicateTdsPayload(int? timestampSeconds) {
+    if (timestampSeconds == null) {
       return false;
     }
 
-    return DateTime.now().difference(lastReceivedAt) < _sameTdsDuplicateWindow;
+    return _processedTdsTimestampsSeconds.contains(timestampSeconds);
+  }
+
+  void _markTdsPayloadProcessed(int? timestampSeconds) {
+    if (timestampSeconds == null ||
+        !_processedTdsTimestampsSeconds.add(timestampSeconds)) {
+      return;
+    }
+
+    _processedTdsTimestampOrder.addLast(timestampSeconds);
+    while (_processedTdsTimestampOrder.length > _processedTdsTimestampLimit) {
+      final expiredTimestamp = _processedTdsTimestampOrder.removeFirst();
+      _processedTdsTimestampsSeconds.remove(expiredTimestamp);
+    }
   }
 
   Future<void> _readLatestPayload(BluetoothDevice device) async {
@@ -278,8 +294,7 @@ class PebbleBluetoothConnectionService {
       await _handlePayloadBytes(
         value,
         device: device,
-        generateReportFromTds: true,
-        generateReportOnlyWhenTdsChanges: true,
+        generateReportFromTds: false,
       );
     } catch (_) {
       // Notifications remain the primary update path.
@@ -421,8 +436,8 @@ class PebbleBluetoothConnectionService {
     final deviceToDisconnect = device ?? _activeDevice;
     _activeDevice = null;
     _lastBatteryPercent = null;
-    _lastReceivedTds = null;
-    _lastReceivedTdsAt = null;
+    _processedTdsTimestampsSeconds.clear();
+    _processedTdsTimestampOrder.clear();
 
     if (disconnectDevice && deviceToDisconnect != null) {
       try {
@@ -627,10 +642,12 @@ class _PebblePayload {
   const _PebblePayload({
     required this.batteryPercent,
     required this.tds,
+    required this.tdsTimestampSeconds,
   });
 
   final int? batteryPercent;
   final int? tds;
+  final int? tdsTimestampSeconds;
 
   static _PebblePayload? tryParse(List<int> value) {
     final rawPayload = utf8.decode(value, allowMalformed: true).trim();
@@ -647,6 +664,10 @@ class _PebblePayload {
             const ['battery_number', 'batteryPercent', 'battery'],
           ),
           tds: _intValue(decoded, const ['tds_number', 'tds', 'tdsPpm']),
+          tdsTimestampSeconds: _intValue(
+            decoded,
+            const ['tds_timestamp', 'tdsTimestamp', 'tdsTimestampSeconds'],
+          ),
         );
       }
 
@@ -658,12 +679,20 @@ class _PebblePayload {
             const ['battery_number', 'batteryPercent', 'battery'],
           ),
           tds: _intValue(normalized, const ['tds_number', 'tds', 'tdsPpm']),
+          tdsTimestampSeconds: _intValue(
+            normalized,
+            const ['tds_timestamp', 'tdsTimestamp', 'tdsTimestampSeconds'],
+          ),
         );
       }
     } on FormatException {
       final plainTds = int.tryParse(rawPayload);
       if (plainTds != null) {
-        return _PebblePayload(batteryPercent: null, tds: plainTds);
+        return _PebblePayload(
+          batteryPercent: null,
+          tds: plainTds,
+          tdsTimestampSeconds: null,
+        );
       }
     }
 

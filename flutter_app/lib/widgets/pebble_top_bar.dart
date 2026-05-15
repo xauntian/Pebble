@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
@@ -10,35 +11,38 @@ class PebbleTopBar extends StatelessWidget {
     super.key,
     this.showDate = false,
     this.dateLabel = 'Jun 10, 2024',
-    this.avatarLabel = 'YT',
     this.onMenuPressed,
   });
 
   final bool showDate;
   final String dateLabel;
-  final String avatarLabel;
   final VoidCallback? onMenuPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _MenuButton(onPressed: onMenuPressed),
-        if (showDate) ...[
-          const Spacer(),
-          PillChip(
-            label: dateLabel,
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-            backgroundColor: AppColors.white.withValues(alpha: 0.2),
-            boxShadow: const [],
-            borderRadius: AppRadius.pill,
-            textStyle: AppTextStyles.date,
-          ),
-          const Spacer(),
-        ] else
-          const Spacer(),
-        _UserAvatar(label: avatarLabel),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Row(
+          children: [
+            _MenuButton(onPressed: onMenuPressed),
+            if (showDate) ...[
+              const Spacer(),
+              PillChip(
+                label: dateLabel,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                backgroundColor: AppColors.white.withValues(alpha: 0.2),
+                boxShadow: const [],
+                borderRadius: AppRadius.pill,
+                textStyle: AppTextStyles.date,
+              ),
+              const Spacer(),
+            ] else
+              const Spacer(),
+            const _UserIcon(),
+          ],
+        );
+      },
     );
   }
 }
@@ -57,8 +61,8 @@ class _MenuButton extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onPressed,
         child: const SizedBox(
-          width: 29,
-          height: 29,
+          width: 39,
+          height: 39,
           child: Icon(
             Icons.menu_rounded,
             size: 29,
@@ -70,30 +74,15 @@ class _MenuButton extends StatelessWidget {
   }
 }
 
-class _UserAvatar extends StatelessWidget {
-  const _UserAvatar({required this.label});
-
-  final String label;
+class _UserIcon extends StatelessWidget {
+  const _UserIcon();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SvgPicture.asset(
+      'assets/figma/menu-user.svg',
       width: 39,
       height: 39,
-      decoration: BoxDecoration(
-        color: AppColors.lime,
-        borderRadius: BorderRadius.circular(AppRadius.avatar),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontFamily: AppTextStyles.fontFamily,
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-          color: AppColors.textPrimary,
-        ),
-      ),
     );
   }
 }
